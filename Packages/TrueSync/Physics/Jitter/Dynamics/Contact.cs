@@ -1,4 +1,5 @@
-﻿/* Copyright (C) <2009-2011> <Thorben Linneweber, Jitter Physics>
+﻿using System;
+/* Copyright (C) <2009-2011> <Thorben Linneweber, Jitter Physics>
 * 
 *  This software is provided 'as-is', without any express or implied
 *  warranty.  In no event will the authors be held liable for any damages
@@ -25,9 +26,9 @@ namespace TrueSync.Physics3D {
         public enum MaterialCoefficientMixingType { TakeMaximum, TakeMinimum, UseAverage }
 
         internal FP maximumBias = 10;
-        internal FP bias = 25 * FP.EN2;
+        internal FP bias = 40 * FP.EN2;
         internal FP minVelocity = FP.EN3;
-        internal FP allowedPenetration = FP.EN2;
+        internal FP allowedPenetration = 2.5*FP.EN3;
         internal FP breakThreshold = FP.EN2;
 
         internal MaterialCoefficientMixingType materialMode = MaterialCoefficientMixingType.UseAverage;
@@ -181,7 +182,8 @@ namespace TrueSync.Physics3D {
 
             FP dvx, dvy, dvz;
 
-            dvx = body2.linearVelocity.x - body1.linearVelocity.x;
+			// 保持世界坐标的旋转度, body1为静止参照系, body2相对body1的速度
+			dvx = body2.linearVelocity.x - body1.linearVelocity.x;
             dvy = body2.linearVelocity.y - body1.linearVelocity.y;
             dvz = body2.linearVelocity.z - body1.linearVelocity.z;
 
@@ -199,32 +201,263 @@ namespace TrueSync.Physics3D {
                 dvz = dvz + (body2.angularVelocity.x * relativePos2.y) - (body2.angularVelocity.y * relativePos2.x);
             }
 
-            // this gets us some performance
-            if (dvx * dvx + dvy * dvy + dvz * dvz < settings.minVelocity * settings.minVelocity)
-            { return; }
+			var th = TSVector.Dot((body2.Position - body1.Position), normal);
+			// body1在法线源端, body2在法线末端
+			var body1IsNormalSource = th > 0;
 
-            FP vn = normal.x * dvx + normal.y * dvy + normal.z * dvz;
-            FP normalImpulse = massNormal * (-vn + restitutionBias + speculativeVelocity);
+			// this gets us some performance
+			if (Penetration < 2 * settings.allowedPenetration)
+            {
+                if (dvx * dvx + dvy * dvy + dvz * dvz < settings.minVelocity * settings.minVelocity)
+                { return; }
+            }
 
-            FP oldNormalImpulse = accumulatedNormalImpulse;
-            accumulatedNormalImpulse = oldNormalImpulse + normalImpulse;
-            if (accumulatedNormalImpulse < FP.Zero) accumulatedNormalImpulse = FP.Zero;
-            normalImpulse = accumulatedNormalImpulse - oldNormalImpulse;
+			if (
+                 (body2.isStatic && body2.Shape is BoxShape) ||
+                 (body1.isStatic && body1.Shape is BoxShape)
+                //false
+				)
+			{
 
-            FP vt = dvx * tangent.x + dvy * tangent.y + dvz * tangent.z;
-            FP maxTangentImpulse = friction * accumulatedNormalImpulse;
-            FP tangentImpulse = massTangent * (-vt);
+				// var normal2 = body1.linearVelocity - body2.linearVelocity;
 
-            FP oldTangentImpulse = accumulatedTangentImpulse;
-            accumulatedTangentImpulse = oldTangentImpulse + tangentImpulse;
-            if (accumulatedTangentImpulse < -maxTangentImpulse) accumulatedTangentImpulse = -maxTangentImpulse;
-            else if (accumulatedTangentImpulse > maxTangentImpulse) accumulatedTangentImpulse = maxTangentImpulse;
+				// TODO: 碰撞受力优化
+				// 判断碰撞点在垂直运动方向的面上是否存在其他临近的重叠点
+				// 判断碰撞点在垂直运动方向上是否存在平行受力面
+				// end
 
-            tangentImpulse = accumulatedTangentImpulse - oldTangentImpulse;
+				FP vn = normal.x * dvx + normal.y * dvy + normal.z * dvz;
+				FP normalImpulse = massNormal * (-vn + restitutionBias + speculativeVelocity);
 
-            // Apply contact impulse
-            TSVector impulse = normal * normalImpulse + tangent * tangentImpulse;
-            ApplyImpulse(ref impulse);
+                var isDeepY = -normal.y * Penetration > settings.allowedPenetration;
+
+                FP oldNormalImpulse = accumulatedNormalImpulse;
+				accumulatedNormalImpulse = oldNormalImpulse + normalImpulse;
+				if (accumulatedNormalImpulse < FP.Zero) accumulatedNormalImpulse = FP.Zero;
+				normalImpulse = accumulatedNormalImpulse - oldNormalImpulse;
+
+				FP vt = dvx * tangent.x + dvy * tangent.y + dvz * tangent.z;
+				FP maxTangentImpulse = friction * accumulatedNormalImpulse;
+				FP tangentImpulse = massTangent * (-vt);
+
+				FP oldTangentImpulse = accumulatedTangentImpulse;
+				accumulatedTangentImpulse = oldTangentImpulse + tangentImpulse;
+				if (accumulatedTangentImpulse < -maxTangentImpulse) accumulatedTangentImpulse = -maxTangentImpulse;
+				else if (accumulatedTangentImpulse > maxTangentImpulse) accumulatedTangentImpulse = maxTangentImpulse;
+
+				tangentImpulse = accumulatedTangentImpulse - oldTangentImpulse;
+
+				// Apply contact impulse
+				var nImp = normal * normalImpulse;
+				var tImp = tangent * tangentImpulse;
+				TSVector impulse = nImp + tImp;
+
+                // UnityEngine.Debug.Log($"contact: body1:{body1.gameObject.name}, body2: {body2.gameObject.name}, tangent: {tangent}, impulse:{impulse}, Penetration:{Penetration}, ");
+                RigidBody bodyUp;
+                if (!body1.isStatic)
+                {
+                    if (!body2.isStatic)
+                    {
+                        if (body1.position.y > body2.position.y)
+                        {
+                            bodyUp = body1;
+                        }
+                        else
+                        {
+                            bodyUp = body2;
+                        }
+                    }
+                    else
+                    {
+                        bodyUp = body1;
+                    }
+                }
+                else
+                {
+                    bodyUp = body2;
+                }
+                RigidBody bodyDown;
+                if (bodyUp == body1)
+                {
+                    bodyDown = body2;
+                }
+                else
+                {
+                    bodyDown = body1;
+                }
+
+                var timestep = fsync.FrameSyncConfig.Inst.NetFDT;
+                // TODO: 优化托浮
+                if (isDeepY)
+				{
+					bodyUp.linearVelocity.y = Penetration / fsync.FrameSyncConfig.Inst.NetFDT / 4;
+                    bodyDown.linearVelocity.y = -bodyUp.linearVelocity.y;
+					impulse.y = 0;
+					accumulatedNormalImpulse=0;
+					ApplyImpulse(ref impulse);
+				}
+				else
+				{
+
+					// if (body1.gameObject.name.StartsWith("obstacleCollider") || body2.gameObject.name.StartsWith("obstacleCollider"))
+					// {
+					//     UnityEngine.Debug.Log("lkjef");
+					// }
+
+					var restitutionBias = 0.99 * (FP.One / timestep) * TSMath.Max(FP.Zero, Penetration - settings.allowedPenetration);
+                    //restitutionBias = TSMath.Clamp(restitutionBias, FP.Zero, settings.maximumBias);
+
+                    vn = normal.x * dvx + normal.y * dvy + normal.z * dvz;
+                    FP vn1 = -vn;
+					FP expRate = 0.01f;
+                    // TODO: 需要按照模型穿透比例计算过量反弹
+					var exp = expRate * restitutionBias * restitutionBias * FP.Sign(restitutionBias);
+                    //if (body1IsNormalSource)
+                    {
+						// if (vn1 < 0)
+						// {
+						//     vn1 = 0;
+						// }
+						normalImpulse = -(-(restitutionBias + exp + speculativeVelocity) - vn1) * massNormal;
+                        accumulatedNormalImpulse = restitutionBias;
+                    }
+      //              else
+      //              {
+						//// if (vn1 > 0)
+						//// {
+						////     vn1 = 0;
+						//// } 
+						//normalImpulse = -(restitutionBias + exp + speculativeVelocity - vn1) * massNormal;
+      //                  accumulatedNormalImpulse = restitutionBias;
+      //              }
+
+                    if (Penetration < settings.allowedPenetration)
+                    {
+                        var shortRestitutionBias = settings.bias * (FP.One / timestep) * TSMath.Max(FP.Zero, Penetration);
+                        shortRestitutionBias = TSMath.Clamp(shortRestitutionBias, FP.Zero, settings.maximumBias);
+						normalImpulse = massNormal * (shortRestitutionBias + expRate * FP.Sign(shortRestitutionBias) * shortRestitutionBias * shortRestitutionBias);
+                        accumulatedNormalImpulse = shortRestitutionBias;
+                    }
+
+                    maxTangentImpulse = friction * accumulatedNormalImpulse;
+                    tangentImpulse = massTangent * (-vt);
+                    oldTangentImpulse = accumulatedTangentImpulse;
+                    accumulatedTangentImpulse = oldTangentImpulse + tangentImpulse;
+                    if (accumulatedTangentImpulse < -maxTangentImpulse) accumulatedTangentImpulse = -maxTangentImpulse;
+                    else if (accumulatedTangentImpulse > maxTangentImpulse) accumulatedTangentImpulse = maxTangentImpulse;
+
+                    tangentImpulse = accumulatedTangentImpulse - oldTangentImpulse;
+
+                    // Apply contact impulse
+                    nImp = normal * normalImpulse;
+                    tImp = tangent * tangentImpulse;
+                    impulse = nImp + tImp;
+                    ApplyImpulse(impulse);
+                }
+			}
+			else
+			{
+
+				FP vn = normal.x * dvx + normal.y * dvy + normal.z * dvz;
+                FP vn1=-vn;
+				FP normalImpulse;
+                if (body1IsNormalSource)
+                {
+					// if (vn1 < 0)
+					// {
+					//     vn1 = 0;
+					// }
+					normalImpulse = -(-(restitutionBias + speculativeVelocity) - vn1) * massNormal;
+				}
+				else
+				{
+					// if (vn1 > 0)
+					// {
+					//     vn1 = 0;
+					// }
+					normalImpulse = -(restitutionBias + speculativeVelocity - vn1) * massNormal;
+				}
+
+				if (Penetration < settings.allowedPenetration)
+				{
+					normalImpulse = massNormal * restitutionBias;
+
+					// FP oldNormalImpulse = accumulatedNormalImpulse;
+					// accumulatedNormalImpulse = oldNormalImpulse + normalImpulse;
+					// if (accumulatedNormalImpulse < FP.Zero) accumulatedNormalImpulse = FP.Zero;
+					// normalImpulse = accumulatedNormalImpulse - oldNormalImpulse;
+
+					// if (accumulatedNormalImpulse != 0)
+					// {
+					// 	normalImpulse = normalImpulse - accumulatedNormalImpulse;
+					// 	accumulatedNormalImpulse = 0;
+					// }
+				}
+				else
+				{
+					normalImpulse = normalImpulse;
+					// if (accumulatedNormalImpulse * normalImpulse > 0)
+					// {
+					// 	if (FP.Abs(accumulatedNormalImpulse) > FP.Abs(normalImpulse))
+					// 	{
+					// 		normalImpulse = 0;
+					// 	}
+					// 	else
+					// 	{
+					// 		var accTo = normalImpulse;
+					// 		normalImpulse = normalImpulse - accumulatedNormalImpulse;
+					// 		accumulatedNormalImpulse = accTo;
+					// 	}
+					// }
+					// else
+					// {
+					// 	// hold on
+					// 	accumulatedNormalImpulse += normalImpulse;
+					// }
+				}
+                accumulatedNormalImpulse = -normalImpulse;
+
+
+                //            if (Penetration > settings.allowedPenetration)
+                //            {
+                //}
+                //else
+                //{
+                //	//normalImpulse = massNormal * (restitutionBias + speculativeVelocity);
+
+                //	FP oldNormalImpulse = accumulatedNormalImpulse;
+                //	accumulatedNormalImpulse = oldNormalImpulse + normalImpulse;
+                //	if (accumulatedNormalImpulse < FP.Zero) accumulatedNormalImpulse = FP.Zero;
+                //	normalImpulse = accumulatedNormalImpulse - oldNormalImpulse;
+
+                //}
+
+                FP vt = dvx * tangent.x + dvy * tangent.y + dvz * tangent.z;
+                FP maxTangentImpulse = friction * accumulatedNormalImpulse;
+                FP tangentImpulse;
+				// if (Penetration > settings.allowedPenetration)
+				// {
+				//     tangentImpulse = massTangent * (-vt);
+				// }
+				// else
+				// {
+				tangentImpulse = massTangent * (-vt);
+                FP oldTangentImpulse = accumulatedTangentImpulse;
+                accumulatedTangentImpulse = oldTangentImpulse + tangentImpulse;
+                if (accumulatedTangentImpulse < -maxTangentImpulse) accumulatedTangentImpulse = -maxTangentImpulse;
+                else if (accumulatedTangentImpulse > maxTangentImpulse) accumulatedTangentImpulse = maxTangentImpulse;
+
+                tangentImpulse = accumulatedTangentImpulse - oldTangentImpulse;
+				// }
+
+				// Apply contact impulse
+				var nImp = normal * normalImpulse;
+				var tImp = tangent * tangentImpulse;
+				TSVector impulse = nImp + tImp;
+
+
+				ApplyImpulse(ref impulse);
+			}
 
         }
 
@@ -257,10 +490,19 @@ namespace TrueSync.Physics3D {
                 TSVector.Add(ref p2, ref body2.position, out p2);
             }
 
-
-            TSVector dist; TSVector.Subtract(ref p1, ref p2, out dist);
-            penetration = TSVector.Dot(ref dist, ref normal);
-        }
+			{
+				TSVector dist; TSVector.Subtract(ref p1, ref p2, out dist);
+				penetration = TSVector.Dot(ref dist, ref normal);
+			}
+			if (penetration > settings.breakThreshold)
+			{
+				// TODO: 增强受力分析意外情况处理
+				if (body1.CachedBoundingBox.Contains(body2.CachedBoundingBox) == TSBBox.ContainmentType.Disjoint)
+				{
+					penetration = -penetration;
+				}
+			}
+		}
 
         /// <summary>
         /// An impulse is applied an both contact points.
@@ -555,20 +797,27 @@ namespace TrueSync.Physics3D {
             else treatBody2AsStatic = true;
         }
 
+#if UNITY_EDITOR
+		FP penetration0;
+#endif
 
-        /// <summary>
-        /// Initializes a contact.
-        /// </summary>
-        /// <param name="body1">The first body.</param>
-        /// <param name="body2">The second body.</param>
-        /// <param name="point1">The collision point in worldspace</param>
-        /// <param name="point2">The collision point in worldspace</param>
-        /// <param name="n">The normal pointing to body2.</param>
-        /// <param name="penetration">The estimated penetration depth.</param>
-        public void Initialize(RigidBody body1, RigidBody body2, ref TSVector point1, ref TSVector point2, ref TSVector n,
+		/// <summary>
+		/// Initializes a contact.
+		/// </summary>
+		/// <param name="body1">The first body.</param>
+		/// <param name="body2">The second body.</param>
+		/// <param name="point1">The collision point in worldspace</param>
+		/// <param name="point2">The collision point in worldspace</param>
+		/// <param name="n">The normal pointing to body2.</param>
+		/// <param name="penetration">The estimated penetration depth.</param>
+		public void Initialize(RigidBody body1, RigidBody body2, ref TSVector point1, ref TSVector point2, ref TSVector n,
             FP penetration, bool newContact, ContactSettings settings)
         {
-            this.body1 = body1;  this.body2 = body2;
+#if UNITY_EDITOR
+			penetration0 = penetration;
+#endif
+
+			this.body1 = body1; this.body2 = body2;
             this.normal = n; normal.Normalize();
             this.p1 = point1; this.p2 = point2;
 

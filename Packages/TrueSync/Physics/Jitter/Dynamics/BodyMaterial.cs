@@ -5,8 +5,8 @@
      **/
     public class BodyMaterial {
 
-        internal FP kineticFriction = FP.One / 4;
-        internal FP staticFriction = FP.One / 2;
+		internal FP kineticFriction = FP.One * FP.myquat;
+		internal FP staticFriction = FP.One * FP.myhalf;
         internal FP restitution = FP.Zero;
 
         public BodyMaterial() { }

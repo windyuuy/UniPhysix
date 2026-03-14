@@ -17,9 +17,16 @@ namespace TrueSync {
 		public const long MIN_VALUE = long.MinValue;
 		public const int NUM_BITS = 64;
 		public const int FRACTIONAL_PLACES = 32;
+		public const int HALF_FRACTIONAL_PLACES = 16;
+		public const int QUAT_FRACTIONAL_PLACES = 8;
+		public const int DE_QUAT_FRACTIONAL_PLACES = 24;
 		public const long ONE = 1L << FRACTIONAL_PLACES;
+		public const long TWO = 2L << FRACTIONAL_PLACES;
 		public const long TEN = 10L << FRACTIONAL_PLACES;
 		public const long HALF = 1L << (FRACTIONAL_PLACES - 1);
+		public const long QUAT = 1L << (FRACTIONAL_PLACES - 2);
+		public const long OCTOBER = 1L << (FRACTIONAL_PLACES - 3);
+		public const long HEX = 1L << (FRACTIONAL_PLACES - 4);
 		public const long PI_TIMES_2 = 0x6487ED511;
 		public const long PI = 0x3243F6A88;
 		public const long PI_OVER_2 = 0x1921FB544;
@@ -33,8 +40,13 @@ namespace TrueSync {
         public static readonly FP MaxValue = new FP(MAX_VALUE-1);
         public static readonly FP MinValue = new FP(MIN_VALUE+2);
         public static readonly FP One = new FP(ONE);
+		public static readonly FP Two = new FP(TWO);
 		public static readonly FP Ten = new FP(TEN);
         public static readonly FP Half = new FP(HALF);
+		public static readonly FP myhalf = new FP(HALF);
+		public static readonly FP myquat = new FP(QUAT);
+		public static readonly FP myoct = new FP(OCTOBER);
+		public static readonly FP myhex = new FP(HEX);
 
         public static readonly FP Zero = new FP();
         public static readonly FP PositiveInfinity = new FP(MAX_VALUE);
@@ -81,12 +93,17 @@ namespace TrueSync {
                 0;
         }
 
+		public static FP CopySign(FP value, FP sign)
+		{
+			return FP.Abs(value) * FP.Sign(sign);
+		}
 
-        /// <summary>
-        /// Returns the absolute value of a Fix64 number.
-        /// Note: Abs(Fix64.MinValue) == Fix64.MaxValue.
-        /// </summary>
-        public static FP Abs(FP value) {
+
+		/// <summary>
+		/// Returns the absolute value of a Fix64 number.
+		/// Note: Abs(Fix64.MinValue) == Fix64.MaxValue.
+		/// </summary>
+		public static FP Abs(FP value) {
             if (value._serializedValue == MIN_VALUE) {
                 return MaxValue;
             }
@@ -158,8 +175,23 @@ namespace TrueSync {
         /// </summary>
         public static FP operator +(FP x, FP y) {
             FP result;
+#if UNITY_EDITOR
+			try
+			{
+				checked
+				{
+                    result._serializedValue = x._serializedValue + y._serializedValue;
+				}
+			}
+			catch (OverflowException e)
+			{
+				Debug.LogError($"FP + overflow: {x} + {y}");
+				result._serializedValue = x._serializedValue + y._serializedValue;
+			}
+#else
             result._serializedValue = x._serializedValue + y._serializedValue;
-            return result;
+#endif
+			return result;
             //return new FP(x._serializedValue + y._serializedValue);
         }
 
@@ -185,7 +217,7 @@ namespace TrueSync {
         /// </summary>
         public static FP FastAdd(FP x, FP y) {
             FP result;
-            result._serializedValue = x._serializedValue + y._serializedValue;
+			result._serializedValue = x._serializedValue + y._serializedValue;
             return result;
             //return new FP(x._serializedValue + y._serializedValue);
         }
@@ -196,10 +228,40 @@ namespace TrueSync {
         /// </summary>
         public static FP operator -(FP x, FP y) {
             FP result;
+#if UNITY_EDITOR
+			try
+			{
+				checked
+				{
+					result._serializedValue = x._serializedValue - y._serializedValue;
+				}
+			}
+			catch (OverflowException e)
+			{
+				Debug.LogError("FP - overflow: {x} - {y}");
+				result._serializedValue = x._serializedValue - y._serializedValue;
+				// var xhi = x._serializedValue >> FRACTIONAL_PLACES;
+				// var yhi = y._serializedValue >> FRACTIONAL_PLACES;
+				// var sumH = xhi + yhi;
+				// if (sumH > 0)
+				// {
+				// 	return MaxValue;
+				// }
+				// else if (sumH < 0)
+				// {
+				// 	return MinValue;
+				// }
+				// else
+				// {
+				// 	return 0;
+				// }
+			}
+#else
             result._serializedValue = x._serializedValue - y._serializedValue;
-            return result;
-            //return new FP(x._serializedValue - y._serializedValue);
-        }
+#endif
+			return result;
+			//return new FP(x._serializedValue - y._serializedValue);
+		}
 
         /// <summary>
         /// Subtracts y from x witout performing overflow checking. Should be inlined by the CLR.
@@ -235,26 +297,55 @@ namespace TrueSync {
         public static FP operator *(FP x, FP y) {
             var xl = x._serializedValue;
             var yl = y._serializedValue;
-
+            
             var xlo = (ulong)(xl & 0x00000000FFFFFFFF);
             var xhi = xl >> FRACTIONAL_PLACES;
             var ylo = (ulong)(yl & 0x00000000FFFFFFFF);
             var yhi = yl >> FRACTIONAL_PLACES;
 
-            var lolo = xlo * ylo;
-            var lohi = (long)xlo * yhi;
-            var hilo = xhi * (long)ylo;
-            var hihi = xhi * yhi;
+            long sum = 0;
+            long hiResult = 0;
+            long hihi = 0;
+            
+            #region precision
+            try
+            {
+                checked
+                {
+                    var lolo = xlo * ylo;
+                    var lohi = (long)xlo * yhi;
+                    var hilo = xhi * (long)ylo;
+                    hihi = xhi * yhi;
 
-            var loResult = lolo >> FRACTIONAL_PLACES;
-            var midResult1 = lohi;
-            var midResult2 = hilo;
-            var hiResult = hihi << FRACTIONAL_PLACES;
+                    var loResult = lolo >> FRACTIONAL_PLACES;
+                    var midResult1 = lohi;
+                    var midResult2 = hilo;
+                    hiResult = hihi << FRACTIONAL_PLACES;
 
-            var sum = (long)loResult + midResult1 + midResult2 + hiResult;
-            FP result;// = default(FP);
-            result._serializedValue = sum;
-            return result;
+                    sum = (long)loResult + midResult1 + midResult2 + hiResult;
+                    FP result;// = default(FP);
+                    result._serializedValue = sum;
+
+                    // 有可能因为 hiResult 或者 sum 溢出导致result结果不对, 由于现象的普遍性, 此处不做检测
+                    return result;
+                }
+            }
+            catch
+            {
+                // Debug.LogError($"overflow: {x},{y}, " + e);
+
+                if ((yl^xl)>=0)
+                {
+                    return MaxValue;
+                }
+                else
+                {
+                    return MinValue;
+                }
+            }
+            #endregion
+
+			// return FP.Zero;
         }
 
         /// <summary>
@@ -364,6 +455,123 @@ namespace TrueSync {
             while ((x & 0xF000000000000000) == 0) { result += 4; x <<= 4; }
             while ((x & 0x8000000000000000) == 0) { result += 1; x <<= 1; }
             return result;
+        }
+
+        public static FP FastDiv(FP x,FP y)
+        {
+            var xl = x._serializedValue;
+            var yl = y._serializedValue;
+            // var sign=0x8000000000000000&(ulong)(xl^yl);
+            var sign = (xl ^ yl);
+
+            if (yl == 0)
+            {
+                if (sign > 0)
+                {
+                    return MinValue;
+                }
+                else
+                {
+                    return MaxValue;
+                }
+            }
+
+            xl = Math.Abs(xl);
+            yl = Math.Abs(yl);
+
+            // 缩小分母倍率
+            int mmov;
+            if (yl > 0x0000FFFFFFFFFFFF)
+            {
+                mmov = FRACTIONAL_PLACES + QUAT_FRACTIONAL_PLACES;
+                yl = yl >> mmov;
+            }
+            else if (yl > 0x00000000FFFFFFFF)
+            {
+                mmov = HALF_FRACTIONAL_PLACES + QUAT_FRACTIONAL_PLACES;
+                yl = yl >> mmov;
+            }
+            else if (yl > 0x0000000000FFFFFF)
+            {
+                mmov = QUAT_FRACTIONAL_PLACES;
+                yl = yl >> mmov;
+            }
+            else
+            {
+                mmov = 0;
+            }
+
+            long hx1 = (long)(((ulong)xl & 0xFFFF000000000000) / (ulong)yl);
+            long hx2 = ((xl & 0x0000FFFF00000000) << HALF_FRACTIONAL_PLACES) / yl;
+            long hx3 = ((xl & 0x00000000FFFF0000) << FRACTIONAL_PLACES) / yl;
+            long hx4 = ((xl & 0x000000000000FFFF) << (HALF_FRACTIONAL_PLACES + FRACTIONAL_PLACES)) / yl;
+
+            long dx;
+            // 放大分子倍率
+            int movx;
+            if (hx1 > 0)
+            {
+                movx = 0;
+                dx = hx1 + (hx2 >> HALF_FRACTIONAL_PLACES) + (hx3 >> FRACTIONAL_PLACES) + (hx4 >> (FRACTIONAL_PLACES + HALF_FRACTIONAL_PLACES));
+            }
+            else if (hx2 > 0)
+            {
+                movx = HALF_FRACTIONAL_PLACES;
+                /*(hx1<<HALF_FRACTIONAL_PLACES)+*/
+                dx = hx2 + (hx3 >> HALF_FRACTIONAL_PLACES) + (hx4 >> FRACTIONAL_PLACES);
+            }
+            else if (hx3 > 0)
+            {
+                movx = FRACTIONAL_PLACES;
+                /*(hx1<<FRACTIONAL_PLACES)+(hx2<<HALF_FRACTIONAL_PLACES)+*/
+                dx = hx3 + (hx4 >> HALF_FRACTIONAL_PLACES);
+            }
+            else
+            {
+                movx = FRACTIONAL_PLACES + HALF_FRACTIONAL_PLACES;
+                dx = hx4;
+            }
+
+            // 复原放大倍率
+            movx = FRACTIONAL_PLACES - (movx + mmov);
+
+            try
+            {
+                checked
+                {
+                    if (movx > 0)
+                    {
+                        dx = dx << movx;
+                    }
+                    else if (movx < 0)
+                    {
+                        dx = dx >> (-movx);
+                    }
+                }
+            }
+            catch
+            {
+                if (sign > 0)
+                {
+                    return MinValue;
+                }
+                else
+                {
+                    return MaxValue;
+                }
+            }
+
+            // 还原符号
+            // dx=dx|sign;
+            if (sign < 0)
+            {
+                dx = -dx;
+            }
+
+            FP result;
+            result._serializedValue = dx;
+            return result;
+
         }
 
         public static FP operator /(FP x, FP y) {
@@ -484,7 +692,17 @@ namespace TrueSync {
             if (xl < 0) {
                 // We cannot represent infinities like Single and Double, and Sqrt is
                 // mathematically undefined for x < 0. So we just throw an exception.
-                throw new ArgumentOutOfRangeException("Negative value passed to Sqrt", "x");
+
+                {
+					//#if UNITY_EDITOR
+					//throw new ArgumentOutOfRangeException("Negative value passed to Sqrt", "x");
+					//#else
+#if UNITY_EDITOR
+					Debug.LogError($"Negative value passed to Sqrt: {x}.");
+#endif
+					return FP.Zero;
+                    //#endif
+                }
             }
 
             var num = (ulong)xl;
@@ -758,8 +976,10 @@ namespace TrueSync {
             var z = y / x;
 
             FP sm = FP.EN2 * 28;
-            // Deal with overflow
-            if (One + sm * z * z == MaxValue) {
+			// Deal with overflow
+			//if (One + sm * z * z == MaxValue) {
+			if (sm * z * z == MaxValue)
+			{
                 return y < Zero ? -PiOver2 : PiOver2;
             }
 
@@ -790,12 +1010,23 @@ namespace TrueSync {
         /// </summary>
         public static FP Acos(FP x)
         {
-            if (x < -One || x > One)
+#if UNITY_EDITOR
+			if (x < -One || x > One)
             {
-                throw new ArgumentOutOfRangeException("Must between -FP.One and FP.One", "x");
+				Debug.LogError("x Must between -FP.One and FP.One");
+			}
+#else
+            if (x < -One)
+            {
+                return FP.Pi;
             }
+            else if (x > One)
+            {
+                return 0;
+            }
+#endif
 
-            if (x.RawValue == 0) return PiOver2;
+			if (x.RawValue == 0) return PiOver2;
 
             var result = Atan(Sqrt(One - x * x) / x);
             return x.RawValue < 0 ? result + Pi : result;

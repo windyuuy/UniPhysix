@@ -71,9 +71,9 @@ namespace TrueSync.Physics3D {
 
             // inertia through center of mass axis.
             inertia = TSMatrix.Identity;
-            inertia.M11 = (3 * FP.EN1 / 8) * mass * (radius * radius + 4 * height * height);
+			inertia.M11 = (3 * FP.EN1 * FP.myoct) * mass * (radius * radius + 4 * height * height);
             inertia.M22 = (3 * FP.EN1) * mass * radius * radius;
-            inertia.M33 = (3 * FP.EN1 / 8) * mass * (radius * radius + 4 * height * height);
+			inertia.M33 = (3 * FP.EN1 * FP.myoct) * mass * (radius * radius + 4 * height * height);
 
             // J_x=J_y=3/20 M (R^2+4 H^2)
 

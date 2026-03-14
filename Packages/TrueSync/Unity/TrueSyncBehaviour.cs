@@ -39,7 +39,8 @@ namespace TrueSync {
         public TSTransform tsTransform {
             get {
                 if (_tsTransform == null) {
-                    _tsTransform = this.GetComponent<TSTransform>();
+					// _tsTransform = this.GetComponent<TSTransform>();
+					_tsTransform = this.ReGetTransform();
                 }
 
                 return _tsTransform;

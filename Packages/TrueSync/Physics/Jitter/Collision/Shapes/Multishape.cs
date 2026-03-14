@@ -26,18 +26,19 @@ using System.Diagnostics;
 namespace TrueSync.Physics3D {
 
 
-    /// <summary>
-    /// Represents a variable form of a shape.
-    /// </summary>
-    public abstract class Multishape : Shape
+	/// <summary>
+	/// Represents a variable form of a shape. 一类可变形体, 如编辑的地形等.
+	/// </summary>
+	public abstract class Multishape : Shape
     {
 
-        /// <summary>
-        /// Sets the current shape. First <see cref="Prepare"/> has to be called.
-        /// After SetCurrentShape the shape immitates another shape.
-        /// </summary>
-        /// <param name="index"></param>
-        public abstract void SetCurrentShape(int index);
+		/// <summary>
+		/// Sets the current shape. First <see cref="Prepare"/> has to be called.
+		/// After SetCurrentShape the shape immitates another shape.
+		/// 因为不一定是凸多边形, 所以需要能切换子凸多变形形状, 满足碰撞算法需求.
+		/// </summary>
+		/// <param name="index"></param>
+		public abstract void SetCurrentShape(int index);
 
         /// <summary>
         /// Passes a axis aligned bounding box to the shape where collision
@@ -63,7 +64,13 @@ namespace TrueSync.Physics3D {
         public bool IsClone { get{ return isClone;} }
 
         Stack<Multishape> workingCloneStack = new Stack<Multishape>();
-        public Multishape RequestWorkingClone()
+		/// <summary>
+		/// 请求工作副本
+		/// - 如果缓冲池中有余量, 那么从缓冲池中取出
+		/// - 否则创建新的副本
+		/// </summary>
+		/// <returns></returns>
+		public Multishape RequestWorkingClone()
         {
             Debug.Assert(this.workingCloneStack.Count<10, "Unusual size of the workingCloneStack. Forgot to call ReturnWorkingClone?");
             Debug.Assert(!this.isClone, "Can't clone clones! Something wrong here!");
@@ -118,7 +125,7 @@ namespace TrueSync.Physics3D {
             }
         }
 
-        public override void MakeHull(ref List<TSVector> triangleList, int generationThreshold)
+		protected override void MakeHull(ref List<TSVector> triangleList, int generationThreshold)
         {
             //throw new NotImplementedException();
         }

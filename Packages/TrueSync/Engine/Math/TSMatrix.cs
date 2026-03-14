@@ -370,24 +370,25 @@ namespace TrueSync
         /// <param name="result">The inverted JMatrix.</param>
         public static void Inverse(ref TSMatrix matrix, out TSMatrix result)
         {
-			FP det = 1024 * matrix.M11 * matrix.M22 * matrix.M33 -
-				1024 * matrix.M11 * matrix.M23 * matrix.M32 -
-				1024 * matrix.M12 * matrix.M21 * matrix.M33 +
-				1024 * matrix.M12 * matrix.M23 * matrix.M31 +
-				1024 * matrix.M13 * matrix.M21 * matrix.M32 -
-				1024 * matrix.M13 * matrix.M22 * matrix.M31;
+			FP accu = 0.125;
+			FP det = accu * matrix.M11 * matrix.M22 * matrix.M33 -
+				accu * matrix.M11 * matrix.M23 * matrix.M32 -
+				accu * matrix.M12 * matrix.M21 * matrix.M33 +
+				accu * matrix.M12 * matrix.M23 * matrix.M31 +
+				accu * matrix.M13 * matrix.M21 * matrix.M32 -
+				accu * matrix.M13 * matrix.M22 * matrix.M31;
 
-			FP num11 =1024* matrix.M22 * matrix.M33 - 1024*matrix.M23 * matrix.M32;
-			FP num12 =1024* matrix.M13 * matrix.M32 -1024* matrix.M12 * matrix.M33;
-			FP num13 =1024* matrix.M12 * matrix.M23 -1024* matrix.M22 * matrix.M13;
+			FP num11 = accu * matrix.M22 * matrix.M33 - accu * matrix.M23 * matrix.M32;
+			FP num12 = accu * matrix.M13 * matrix.M32 - accu * matrix.M12 * matrix.M33;
+			FP num13 = accu * matrix.M12 * matrix.M23 - accu * matrix.M22 * matrix.M13;
 
-			FP num21 =1024* matrix.M23 * matrix.M31 -1024* matrix.M33 * matrix.M21;
-			FP num22 =1024* matrix.M11 * matrix.M33 -1024* matrix.M31 * matrix.M13;
-			FP num23 =1024* matrix.M13 * matrix.M21 -1024* matrix.M23 * matrix.M11;
+			FP num21 = accu * matrix.M23 * matrix.M31 - accu * matrix.M33 * matrix.M21;
+			FP num22 = accu * matrix.M11 * matrix.M33 - accu * matrix.M31 * matrix.M13;
+			FP num23 = accu * matrix.M13 * matrix.M21 - accu * matrix.M23 * matrix.M11;
 
-			FP num31 =1024* matrix.M21 * matrix.M32 - 1024* matrix.M31 * matrix.M22;
-			FP num32 =1024* matrix.M12 * matrix.M31 - 1024* matrix.M32 * matrix.M11;
-			FP num33 =1024* matrix.M11 * matrix.M22 - 1024*matrix.M21 * matrix.M12;
+			FP num31 = accu * matrix.M21 * matrix.M32 - accu * matrix.M31 * matrix.M22;
+			FP num32 = accu * matrix.M12 * matrix.M31 - accu * matrix.M32 * matrix.M11;
+			FP num33 = accu * matrix.M11 * matrix.M22 - accu * matrix.M21 * matrix.M12;
 
 			if(det == 0){
 				result.M11 = FP.PositiveInfinity;
@@ -518,15 +519,30 @@ namespace TrueSync
             result.M32 = 2 * (num2 - num);
             result.M33 = FP.One - (2 * (num8 + num9));
         }
-        #endregion
+		#endregion
 
-        /// <summary>
-        /// Creates the transposed matrix.
-        /// </summary>
-        /// <param name="matrix">The matrix which should be transposed.</param>
-        /// <returns>The transposed JMatrix.</returns>
-        #region public static JMatrix Transpose(JMatrix matrix)
-        public static TSMatrix Transpose(TSMatrix matrix)
+
+		public static void CreateInverseFromQuaternion(ref TSQuaternion quaternion, out TSMatrix result)
+		{
+			var inverse = quaternion.Inverse();
+			CreateFromQuaternion(ref inverse, out result);
+		}
+
+		public static TSMatrix CreateInverseFromQuaternion(TSQuaternion quaternion)
+		{
+			TSMatrix result;
+			TSMatrix.CreateInverseFromQuaternion(ref quaternion, out result);
+			return result;
+		}
+
+
+		/// <summary>
+		/// Creates the transposed matrix.
+		/// </summary>
+		/// <param name="matrix">The matrix which should be transposed.</param>
+		/// <returns>The transposed JMatrix.</returns>
+		#region public static JMatrix Transpose(JMatrix matrix)
+		public static TSMatrix Transpose(TSMatrix matrix)
         {
             TSMatrix result;
             TSMatrix.Transpose(ref matrix, out result);
@@ -701,6 +717,40 @@ namespace TrueSync
             return string.Format("{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}", M11.RawValue, M12.RawValue, M13.RawValue, M21.RawValue, M22.RawValue, M23.RawValue, M31.RawValue, M32.RawValue, M33.RawValue);
         }
 
-    }
+		static TSVector cacheColumn;
+		public TSVector column0
+		{
+			get
+			{
+				cacheColumn.x = this.M11;
+				cacheColumn.y = this.M12;
+				cacheColumn.z = this.M13;
+				return cacheColumn;
+			}
+		}
+
+		public TSVector column1
+		{
+			get
+			{
+				cacheColumn.x = this.M21;
+				cacheColumn.y = this.M22;
+				cacheColumn.z = this.M23;
+				return cacheColumn;
+			}
+		}
+
+		public TSVector column2
+		{
+			get
+			{
+				cacheColumn.x = this.M31;
+				cacheColumn.y = this.M32;
+				cacheColumn.z = this.M33;
+				return cacheColumn;
+			}
+		}
+
+	}
 
 }

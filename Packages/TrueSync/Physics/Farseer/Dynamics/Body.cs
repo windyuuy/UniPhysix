@@ -55,6 +55,8 @@ namespace TrueSync.Physics2D
 
     public class Body : IDisposable, IBody2D
     {
+        public int layer { get; set; }
+
         [ThreadStatic]
         internal static int _bodyIdCounter;
 

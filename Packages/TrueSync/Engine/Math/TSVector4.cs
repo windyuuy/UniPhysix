@@ -334,23 +334,28 @@ namespace TrueSync
             z = FP.Zero;
             w = FP.Zero;
         }
-        #endregion
+		#endregion
 
-        /// <summary>
-        /// Checks if the length of the vector is zero.
-        /// </summary>
-        /// <returns>Returns true if the vector is zero, otherwise false.</returns>
-        #region public bool IsZero()
-        public bool IsZero()
-        {
-            return (this.sqrMagnitude == FP.Zero);
-        }
+		/// <summary>
+		/// Checks if the length of the vector is zero.
+		/// </summary>
+		/// <returns>Returns true if the vector is zero, otherwise false.</returns>
+		#region public bool IsZero()
+		// public bool IsZero()
+		// {
+		//     return (this.sqrMagnitude == FP.Zero);
+		// }
+		public bool IsZero()
+		{
+			var b = (x == 0) && (y == 0) && (z == 0) && (w == 0);
+			return b;
+		}
 
-        /// <summary>
-        /// Checks if the length of the vector is nearly zero.
-        /// </summary>
-        /// <returns>Returns true if the vector is nearly zero, otherwise false.</returns>
-        public bool IsNearlyZero()
+		/// <summary>
+		/// Checks if the length of the vector is nearly zero.
+		/// </summary>
+		/// <returns>Returns true if the vector is nearly zero, otherwise false.</returns>
+		public bool IsNearlyZero()
         {
             return (this.sqrMagnitude < ZeroEpsilonSq);
         }
@@ -391,13 +396,33 @@ namespace TrueSync
             result.w = vector.x * matrix.M41 + vector.y * matrix.M42 + vector.z * matrix.M43 + matrix.M44;
         }
 
-        public static void Transform(ref TSVector4 vector, ref TSMatrix4x4 matrix, out TSVector4 result)
-        {
-            result.x = vector.x * matrix.M11 + vector.y * matrix.M12 + vector.z * matrix.M13 + vector.w * matrix.M14;
-            result.y = vector.x * matrix.M21 + vector.y * matrix.M22 + vector.z * matrix.M23 + vector.w * matrix.M24;
-            result.z = vector.x * matrix.M31 + vector.y * matrix.M32 + vector.z * matrix.M33 + vector.w * matrix.M34;
-            result.w = vector.x * matrix.M41 + vector.y * matrix.M42 + vector.z * matrix.M43 + vector.w * matrix.M44;
-        }
+		public static void Transform(ref TSVector4 vector, ref TSMatrix4x4 matrix, out TSVector4 result)
+		{
+			result.x = vector.x * matrix.M11 + vector.y * matrix.M12 + vector.z * matrix.M13 + vector.w * matrix.M14;
+			result.y = vector.x * matrix.M21 + vector.y * matrix.M22 + vector.z * matrix.M23 + vector.w * matrix.M24;
+			result.z = vector.x * matrix.M31 + vector.y * matrix.M32 + vector.z * matrix.M33 + vector.w * matrix.M34;
+			result.w = vector.x * matrix.M41 + vector.y * matrix.M42 + vector.z * matrix.M43 + vector.w * matrix.M44;
+		}
+
+		/// <summary>
+		/// Transforms a vector by the given matrix.
+		/// </summary>
+		/// <param name="vector">The vector to transform.</param>
+		/// <param name="matrix">The transform matrix.</param>
+		/// <param name="result">The transformed vector.</param>
+		public static void Transform(ref TSVector vector, ref TSMatrix4x4 matrix, out TSVector result)
+		{
+			result.x = vector.x * matrix.M11 + vector.y * matrix.M12 + vector.z * matrix.M13 + matrix.M14;
+			result.y = vector.x * matrix.M21 + vector.y * matrix.M22 + vector.z * matrix.M23 + matrix.M24;
+			result.z = vector.x * matrix.M31 + vector.y * matrix.M32 + vector.z * matrix.M33 + matrix.M34;
+		}
+
+		public static void Transform(ref TSVector4 vector, ref TSMatrix4x4 matrix, out TSVector result)
+		{
+			result.x = vector.x * matrix.M11 + vector.y * matrix.M12 + vector.z * matrix.M13 + vector.w * matrix.M14;
+			result.y = vector.x * matrix.M21 + vector.y * matrix.M22 + vector.z * matrix.M23 + vector.w * matrix.M24;
+			result.z = vector.x * matrix.M31 + vector.y * matrix.M32 + vector.z * matrix.M33 + vector.w * matrix.M34;
+		}
         #endregion
 
         /// <summary>
@@ -475,11 +500,17 @@ namespace TrueSync
         /// <param name="result">Returns the scaled vector.</param>
         public static void Divide(ref TSVector4 value1, FP scaleFactor, out TSVector4 result)
         {
-            result.x = value1.x / scaleFactor;
-            result.y = value1.y / scaleFactor;
-            result.z = value1.z / scaleFactor;
-            result.w = value1.w / scaleFactor;
-        }
+			var sf = 1 / scaleFactor;
+			result.x = value1.x * sf;
+			result.y = value1.y * sf;
+			result.z = value1.z * sf;
+			result.w = value1.w * sf;
+
+			// result.x = value1.x / scaleFactor;
+			// result.y = value1.y / scaleFactor;
+			// result.z = value1.z / scaleFactor;
+			// result.w = value1.w / scaleFactor;
+		}
 
         /// <summary>
         /// Subtracts two vectors.
@@ -748,7 +779,7 @@ namespace TrueSync
             return new TSVector2(this.x, this.y);
         }
 
-        public TSVector ToTSVector()
+		public TSVector ToTSVector3()
         {
             return new TSVector(this.x, this.y, this.z);
         }

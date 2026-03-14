@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.Serialization;
 using TrueSync.Physics3D;
 
@@ -11,7 +12,22 @@ namespace TrueSync {
     [AddComponentMenu("TrueSync/Physics/TSRigidBody", 11)]
     public class TSRigidBody : MonoBehaviour {
 
-        public enum InterpolateMode { None, Interpolate, Extrapolate };
+		void Awake()
+		{
+			// 遍历自身所有collider组件, 默认附上
+			var colliders = this.GetComponents<TSCollider>();
+			foreach (var collider in colliders)
+			{
+				collider.SetRigidBody(this);
+			}
+		}
+
+		public enum InterpolateMode
+		{
+			None = 0,
+			Interpolate = 1,
+			Extrapolate = 2
+		};
 
         [FormerlySerializedAs("mass")]
         [SerializeField]
@@ -34,6 +50,64 @@ namespace TrueSync {
 
                 if (tsCollider._body != null) {
                     tsCollider._body.Mass = value;
+                }
+            }
+        }
+
+        [SerializeField]
+        private FP _linearDrag;
+
+        /**
+         *  @brief Linear drag coeficient.
+         **/
+        public FP drag
+        {
+            get
+            {
+                if (tsCollider.IsBodyInitialized)
+                {
+                    return tsCollider.Body.TSLinearDrag;
+                }
+
+                return _linearDrag;
+            }
+
+            set
+            {
+                _linearDrag = value;
+
+                if (tsCollider.IsBodyInitialized)
+                {
+                    tsCollider.Body.TSLinearDrag = _linearDrag;
+                }
+            }
+        }
+
+        [SerializeField]
+        private FP _angularDrag = 0.05f;
+
+        /**
+         *  @brief Angular drag coeficient.
+         **/
+        public FP angularDrag
+        {
+            get
+            {
+                if (tsCollider.IsBodyInitialized)
+                {
+                    return tsCollider.Body.TSAngularDrag;
+                }
+
+                return _angularDrag;
+            }
+
+            set
+            {
+                _angularDrag = value;
+
+                if (tsCollider.IsBodyInitialized)
+                {
+                    tsCollider.Body.TSAngularDrag = _angularDrag;
                 }
             }
         }
@@ -86,60 +160,17 @@ namespace TrueSync {
             }
         }
 
-        [SerializeField]
-        private FP _linearDrag;
-
-        /**
-         *  @brief Linear drag coeficient.
-         **/
-        public FP drag {
-            get {
-                if (tsCollider.IsBodyInitialized) {
-                    return tsCollider.Body.TSLinearDrag;
-                }
-
-                return _linearDrag;
-            }
-
-            set {
-                _linearDrag = value;
-
-                if (tsCollider.IsBodyInitialized) {
-                    tsCollider.Body.TSLinearDrag = _linearDrag;
-                }
-            }
-        }
-
-        [SerializeField]
-        private FP _angularDrag = 0.05f;
-
-        /**
-         *  @brief Angular drag coeficient.
-         **/
-        public FP angularDrag {
-            get {
-                if (tsCollider.IsBodyInitialized) {
-                    return tsCollider.Body.TSAngularDrag;
-                }
-
-                return _angularDrag;
-            }
-
-            set {
-                _angularDrag = value;
-
-                if (tsCollider.IsBodyInitialized) {
-                    tsCollider.Body.TSAngularDrag = _angularDrag;
-                }
-            }
-        }
-
         /**
          *  @brief Interpolation mode that should be used. 
          **/
         public InterpolateMode interpolation;
 
-        [SerializeField]
+		/// <summary>
+		/// 最大插值距离, 如果超过则不插值
+		/// </summary>
+		// public FP interpolationDistance = FP.MaxValue;
+
+		[SerializeField]
         [HideInInspector]
         private TSRigidBodyConstraints _constraints = TSRigidBodyConstraints.None;
 
@@ -187,7 +218,8 @@ namespace TrueSync {
         public TSTransform tsTransform {
             get {
                 if (_tsTransform == null) {
-                    _tsTransform = GetComponent<TSTransform>();
+					// _tsTransform = GetComponent<TSTransform>();
+					_tsTransform = this.ReGetTransform();
                 }
 
                 return _tsTransform;
@@ -245,7 +277,7 @@ namespace TrueSync {
          *  @brief Returns the velocity of the body at some position in world space. 
          **/
         public TSVector GetPointVelocity(TSVector worldPoint) {
-            TSVector directionPoint = position - tsCollider.Body.TSPosition;
+			TSVector directionPoint = position - tsCollider.Body.ReferTSPosition;
             return TSVector.Cross(tsCollider.Body.TSAngularVelocity, directionPoint) + tsCollider.Body.TSLinearVelocity;
         }
 
@@ -277,10 +309,58 @@ namespace TrueSync {
             rotation = TSQuaternion.CreateFromMatrix(TSMatrix.CreateFromLookAt(position, target));
         }
 
-        /**
+		// TODO: 需要完善
+		/**
          *  @brief Moves the body to a new position. 
          **/
-        public void MovePosition(TSVector position) {
+		public CollisionFlags Move(TSVector deltaMove)
+		{
+			if (this.tsCollider)
+			{
+				return tsCollider.Move(position);
+			}
+			else
+			{
+#if UNITY_EDITOR
+				Debug.LogWarning("no collider");
+#endif
+				return CollisionFlags.None;
+			}
+		}
+
+		// TODO: 需要完善
+		/**
+         *  @brief Moves the body to a new position. 
+         **/
+		public CollisionFlags MoveTo(TSVector position)
+		{
+			if (this.tsCollider)
+			{
+				return tsCollider.MoveTo(position);
+			}
+			else
+			{
+#if UNITY_EDITOR
+				Debug.LogWarning("no collider");
+#endif
+				return CollisionFlags.None;
+			}
+		}
+
+		public void MoveDelta(TSVector deltaMove)
+		{
+			this.velocity = TSVector.zero;
+			// var v = this.velocity;
+			// v.x = 0; v.z = 0;
+			// this.velocity = v;
+			this.tsCollider.MoveDelta(deltaMove);
+		}
+
+		/**
+         *  @brief Moves the body to a new position. 
+         **/
+		public void MovePosition(TSVector position)
+		{
             this.position = position;
         }
 
@@ -291,10 +371,12 @@ namespace TrueSync {
             this.rotation = rot;
         }
 
-        /**
+		// TODO: 需要修改为与unity一致
+		/**
         *  @brief Position of the body. 
         **/
-        public TSVector position {
+		public TSVector position
+		{
             get {
                 return tsTransform.position;
             }
@@ -304,10 +386,12 @@ namespace TrueSync {
             }
         }
 
-        /**
+		// TODO: 需要修改为与unity一致
+		/**
         *  @brief Orientation of the body. 
         **/
-        public TSQuaternion rotation {
+		public TSQuaternion rotation
+		{
             get {
                 return tsTransform.rotation;
             }
@@ -317,10 +401,16 @@ namespace TrueSync {
             }
         }
 
-        /**
+		public void RotateTo(TSQuaternion rot, bool needLerp = true)
+		{
+			tsTransform.RotateTo(ref rot, needLerp);
+		}
+
+		/**
         *  @brief LinearVelocity of the body. 
         **/
-        public TSVector velocity {
+		public TSVector velocity
+		{
             get {
                 return tsCollider.Body.TSLinearVelocity;
             }

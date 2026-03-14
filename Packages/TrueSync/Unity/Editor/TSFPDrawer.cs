@@ -15,8 +15,11 @@ namespace TrueSync {
             FP fpValue = FP.FromRaw(rawProp.longValue);
             fpValue = EditorGUI.FloatField(position, label, (float)fpValue);
 
-            rawProp.longValue = fpValue.RawValue;
-            EditorUtility.SetDirty(rawProp.serializedObject.targetObject);
+            if(rawProp.longValue != fpValue.RawValue)
+            {
+                rawProp.longValue = fpValue.RawValue;
+                EditorUtility.SetDirty(rawProp.serializedObject.targetObject);
+            }
 
             EditorGUI.EndProperty();
         }

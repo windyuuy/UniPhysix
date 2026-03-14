@@ -60,7 +60,7 @@ namespace TrueSync {
                 this.gameObject = otherGO;
                 this.collider = this.gameObject.GetComponent<TSCollider>();
                 this.rigidbody = this.gameObject.GetComponent<TSRigidBody>();
-                this.transform = this.collider.tsTransform;
+                this.transform = this.collider.TSTransform;
             }
 
             if (c != null) {
@@ -75,6 +75,31 @@ namespace TrueSync {
             }
         }
 
-    }
+		public bool TryGetComponent<T>(out T role)
+		{
+			return this.collider.TryGetComponent<T>(out role);
+		}
+
+		public bool Raycast(ref TSRay ray, out TSRaycastHit hitInfo, FP maxDistance)
+		{
+			return this.collider.Raycast(ref ray, out hitInfo, maxDistance);
+		}
+
+		//
+		// 摘要:
+		//     Returns a point on the collider that is closest to a given location.
+		//
+		// 参数:
+		//   position:
+		//     Location you want to find the closest point to.
+		//
+		// 返回结果:
+		//     The point on the collider that is closest to the specified location.
+		public TSVector ClosestPoint(TSVector position)
+		{
+			return this.collider.ClosestPoint(position);
+		}
+
+	}
 
 }

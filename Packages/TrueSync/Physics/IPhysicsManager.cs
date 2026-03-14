@@ -27,7 +27,7 @@ public interface IPhysicsManager : IPhysicsManagerBase {
     **/
     bool IsCollisionEnabled(IBody rigidBody1, IBody rigidBody2);
 
-    void AddBody(ICollider iCollider);
+    void AddBody(TrueSync.ICollider iCollider);
 
     void OnRemoveBody(System.Action<IBody> OnRemoveBody);
 

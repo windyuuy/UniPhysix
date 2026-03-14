@@ -29,7 +29,7 @@ namespace TrueSync.Physics2D
 
         public static Fixture AttachRectangle(FP width, FP height, FP density, TSVector2 offset, Body body, object userData = null)
         {
-            Vertices rectangleVertices = PolygonTools.CreateRectangle(width / 2, height / 2);
+			Vertices rectangleVertices = PolygonTools.CreateRectangle(width * FP.myhalf, height * FP.myhalf);
             rectangleVertices.Translate(ref offset);
             PolygonShape rectangleShape = new PolygonShape(rectangleVertices, density);
             return body.CreateFixture(rectangleShape, userData);
@@ -101,7 +101,7 @@ namespace TrueSync.Physics2D
         public static Fixture AttachLineArc(FP radians, int sides, FP radius, TSVector2 position, FP angle, bool closed, Body body)
         {
             Vertices arc = PolygonTools.CreateArc(radians, sides, radius);
-            arc.Rotate((FP.Pi - radians) / 2 + angle);
+			arc.Rotate((FP.Pi - radians) * FP.myhalf + angle);
             arc.Translate(ref position);
 
             return closed ? AttachLoopShape(arc, body) : AttachChainShape(arc, body);
@@ -110,7 +110,7 @@ namespace TrueSync.Physics2D
         public static List<Fixture> AttachSolidArc(FP density, FP radians, int sides, FP radius, TSVector2 position, FP angle, Body body)
         {
             Vertices arc = PolygonTools.CreateArc(radians, sides, radius);
-            arc.Rotate((FP.Pi - radians) / 2 + angle);
+			arc.Rotate((FP.Pi - radians) * FP.myhalf + angle);
 
             arc.Translate(ref position);
 

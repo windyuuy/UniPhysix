@@ -267,8 +267,8 @@ namespace TrueSync.Physics2D
 
         public AABB(TSVector2 center, FP width, FP height)
         {
-            LowerBound = center - new TSVector2(width / 2, height / 2);
-            UpperBound = center + new TSVector2(width / 2, height / 2);
+			LowerBound = center - new TSVector2(width * FP.myhalf, height * FP.myhalf);
+			UpperBound = center + new TSVector2(width * FP.myhalf, height * FP.myhalf);
         }
 
         public FP Width

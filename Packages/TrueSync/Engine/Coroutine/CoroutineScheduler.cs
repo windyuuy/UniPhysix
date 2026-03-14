@@ -44,12 +44,18 @@ namespace TrueSync {
 	public class CoroutineScheduler
 	{
 
-		CoroutineNode first = null;
-		FP currentTime;
+		TSCoroutine first = null;
+		TSCoroutine end = null;
+		//FP currentTime;
 
 		AbstractLockstep lockStep;
 
 		public CoroutineScheduler(AbstractLockstep lockStep) {
+			this.lockStep = lockStep;
+		}
+
+		public void SetLockStep(AbstractLockstep lockStep)
+		{
 			this.lockStep = lockStep;
 		}
 
@@ -60,14 +66,14 @@ namespace TrueSync {
 	   * specifies when the coroutine is resumed.
 	   */
 
-		public CoroutineNode StartCoroutine (IEnumerator fiber)
+		public TSCoroutine StartCoroutine(IEnumerator fiber)
 		{
 			// if function does not have a yield, fiber will be null and we no-op
 			if (fiber == null) {
 				return null;
 			}
 			// create coroutine node and run until we reach first yield
-			CoroutineNode coroutine = new CoroutineNode (fiber);
+			TSCoroutine coroutine = new TSCoroutine(fiber);
 			AddCoroutine (coroutine);
 
 			return coroutine;
@@ -83,6 +89,7 @@ namespace TrueSync {
 		public void StopAllCoroutines ()
 		{
 			first = null;
+			end = null;
 		}
 
 		/**
@@ -94,40 +101,44 @@ namespace TrueSync {
 			return first != null;
 		}
 
-		public void UpdateAllCoroutines ()
-		{
-			InputDataBase oldInputData = TrueSyncInput.CurrentSimulationData;
-			UpdateAllCoroutines (lockStep.Ticks, TrueSyncManager.Time);
-			TrueSyncInput.CurrentSimulationData = (InputData) oldInputData;
-		}
+		//public void UpdateAllCoroutines ()
+		//{
+		//InputDataBase oldInputData = TrueSyncInput.CurrentSimulationData;
+		//UpdateAllCoroutines ();
+		//TrueSyncInput.CurrentSimulationData = (InputData) oldInputData;
+		//}
 
 		/**
 	   * Runs all active coroutines until their next yield. Caller must provide
 	   * the current frame and time. This allows for schedulers to run under
 	   * frame and time regimes other than the Unity's main game loop.
 	   */
-		public void UpdateAllCoroutines (int frame, FP time)
+		public void UpdateAllCoroutinesSide() { UpdateAllCoroutines(); }
+		public void UpdateAllCoroutines()
 		{
-			currentTime = time;
-			CoroutineNode coroutine = this.first;
+			TSCoroutine coroutine = this.first;
 			while (coroutine != null) {
 				// store listNext before coroutine finishes and is removed from the list
-				CoroutineNode listNext = coroutine.listNext;
-
-				if (coroutine.waitForFrame > 0 && frame >= coroutine.waitForFrame) {
-					coroutine.waitForFrame = -1;
-					UpdateCoroutine (coroutine);
-				} else if (coroutine.waitForTime > 0.0f && time >= coroutine.waitForTime) {
-					coroutine.waitForTime = -1.0f;
-					UpdateCoroutine (coroutine);
-				} else if (coroutine.waitForCoroutine != null && coroutine.waitForCoroutine.finished) {
-					coroutine.waitForCoroutine = null;
-					UpdateCoroutine (coroutine);
-				} else if (coroutine.waitForFrame == -1 && coroutine.waitForTime == -1.0f && coroutine.waitForCoroutine == null) {
-					// initial update
-					UpdateCoroutine (coroutine);
+				//TSCoroutine listNext = coroutine.listNext;
+				try
+				{
+					if (coroutine.waitForCoroutine == null)
+					{
+						// initial update
+						UpdateCoroutine(coroutine);
+					}
+					else if (coroutine.waitForCoroutine != null && coroutine.waitForCoroutine.finished)
+					{
+						//removeCoroutine(coroutine.waitForCoroutine);
+						coroutine.waitForCoroutine = null;
+						UpdateCoroutine(coroutine);
+					}
 				}
-				coroutine = listNext;
+				catch (System.Exception e)
+				{
+					UnityEngine.Debug.LogError(e);
+				}
+				coroutine = coroutine.listNext;
 			}
 		}
 
@@ -135,50 +146,69 @@ namespace TrueSync {
 	   * Executes coroutine until next yield. If coroutine has finished, flags
 	   * it as finished and removes it from scheduler list.
 	   */
-		private void UpdateCoroutine (CoroutineNode coroutine)
+		private void UpdateCoroutine(TSCoroutine coroutine)
 		{
-			IEnumerator fiber = coroutine.fiber;
-
+#if OSYNC
 			if (coroutine.playerId > -1) {
 				TrueSyncInput.CurrentSimulationData = (InputData) lockStep.GetInputData (coroutine.playerId);
 			}
+#endif
 
-			if (coroutine.fiber.MoveNext ()) {
-				System.Object yieldCommand = fiber.Current == null ? (System.Object) 1 : fiber.Current;
+			IEnumerator fiber = coroutine.fiber;
 
-				if (yieldCommand.GetType () == typeof(int)) {
-					coroutine.waitForTime = (FP) ((int) yieldCommand);
-					coroutine.waitForTime += (FP)currentTime;
-				} else if (yieldCommand.GetType () == typeof(float)) {
-					coroutine.waitForTime = (FP) ((float) yieldCommand);
-					coroutine.waitForTime += (FP) currentTime;
-				} else if (yieldCommand.GetType () == typeof(FP)) {
-					coroutine.waitForTime = (FP) yieldCommand;
-					coroutine.waitForTime += (FP) currentTime;
-				} else if (yieldCommand.GetType () == typeof(CoroutineNode)) {
-					coroutine.waitForCoroutine = (CoroutineNode) yieldCommand;
-				} else {
-					throw new System.ArgumentException ("CoroutineScheduler: Unexpected coroutine yield type: " + yieldCommand.GetType ());
-				}
+			var ok = fiber.MoveNext();
+			if (ok) {
+				var current = fiber.Current;
+				if(current is IEnumerator)
+                {
+					coroutine.waitForCoroutine = StartCoroutine(current as IEnumerator);
+				} else if(current is UnityEngine.WaitForSeconds)
+                {
+					var waitForSeconds = current as UnityEngine.WaitForSeconds;
+					var f = waitForSeconds.GetType().GetField("m_Seconds", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+					var v= (float)f.GetValue(waitForSeconds);
+					var duration = (FP)v;
+					coroutine.waitForCoroutine = StartCoroutine(new fsync.WaitForSeconds(duration));
+                }
 			} else {
 				// coroutine finished
 				coroutine.finished = true;
-				RemoveCoroutine (coroutine);
+				removeCoroutine(coroutine);
 			}
 		}
 
-		private void AddCoroutine (CoroutineNode coroutine)
+		private void AddCoroutine(TSCoroutine coroutine)
 		{
-
-			if (this.first != null) {
-				coroutine.listNext = this.first;
-				first.listPrevious = coroutine;
-			}
-			first = coroutine;
+            if (this.first == null)
+            {
+				this.first = coroutine;
+				this.end = this.first;
+            }
+            else
+			{
+				coroutine.listPrevious = end;
+				this.end.listNext = coroutine;
+				this.end = coroutine;
+            }
 		}
 
-		private void RemoveCoroutine (CoroutineNode coroutine)
+		public void RemoveCoroutine(TSCoroutine coroutine)
+        {
+            try
+            {
+				this.removeCoroutine(coroutine);
+			}catch(System.Exception e)
+            {
+				UnityEngine.Debug.LogError(e);
+            }
+		}
+
+		private void removeCoroutine(TSCoroutine coroutine)
 		{
+            if (this.end == coroutine)
+            {
+				this.end = coroutine.listPrevious;
+            }
 			if (this.first == coroutine) {
 				// remove first
 				this.first = coroutine.listNext;
@@ -196,6 +226,8 @@ namespace TrueSync {
 			}
 			coroutine.listPrevious = null;
 			coroutine.listNext = null;
+
+			coroutine.OnFinished?.Invoke(coroutine);
 		}
 
 	}//class

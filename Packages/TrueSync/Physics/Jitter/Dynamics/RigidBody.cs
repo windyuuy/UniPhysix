@@ -23,6 +23,10 @@ using System.Collections.Generic;
 using System.Threading;
 #endregion
 
+#if UNITY_5_5_OR_NEWER
+using UnityEngine.Profiling;
+#endif
+
 namespace TrueSync.Physics3D {
 
 
@@ -39,7 +43,13 @@ namespace TrueSync.Physics3D {
         [Flags]
         public enum DampingType { None = 0x00, Angular = 0x01, Linear = 0x02 }
 
-        internal TSMatrix inertia;
+        // 提高性能
+		public int layer {
+            get;
+            set;
+        }=-1;
+        
+		internal TSMatrix inertia;
         internal TSMatrix invInertia;
 
         internal TSMatrix invInertiaWorld;
@@ -163,11 +173,21 @@ namespace TrueSync.Physics3D {
             }
         }
 
-        /// <summary>
-        /// Initializes a new instance of the RigidBody class.
-        /// </summary>
-        /// <param name="shape">The shape of the body.</param>
-        public RigidBody(Shape shape, BodyMaterial material)
+		public TSVector GetScale()
+		{
+			return this.Shape.Scale;
+		}
+
+		public void SetScale(TSVector scale)
+		{
+            this.Shape.Scale = scale;
+		}
+
+		/// <summary>
+		/// Initializes a new instance of the RigidBody class.
+		/// </summary>
+		/// <param name="shape">The shape of the body.</param>
+		public RigidBody(Shape shape, BodyMaterial material)
             :this(shape,material,false)
         {
         }
@@ -209,8 +229,16 @@ namespace TrueSync.Physics3D {
 
             this.isParticle = isParticle;
 
-            Update();
-        }
+			this.IsOrientationDirty = true;
+			this.IsPositionDirty = true;
+
+			this.IsEnabled = true;
+
+			Update();
+
+			this.lastPosition = position;
+
+		}
 
         /// <summary>
         /// Calculates a hashcode for this RigidBody.
@@ -238,7 +266,7 @@ namespace TrueSync.Physics3D {
         /// The axis aligned bounding box of the body.
         /// </summary>
         public TSBBox BoundingBox { get { return boundingBox; } }
-
+		public ref TSBBox CachedBoundingBox { get { return ref boundingBox; } }
 
         internal static int instanceCount = 0;
         private int instance;
@@ -258,11 +286,13 @@ namespace TrueSync.Physics3D {
         /// </summary>
         internal CollisionIsland CollisionIsland { get { return this.island; } }
 
-        /// <summary>
-        /// If set to false the velocity is set to zero,
-        /// the body gets immediately freezed.
-        /// </summary>
-        public bool IsActive
+		public bool IsActiveChanged = false;
+
+		/// <summary>
+		/// If set to false the velocity is set to zero,
+		/// the body gets immediately freezed.
+		/// </summary>
+		public bool IsActive
         {
             get 
             {
@@ -270,23 +300,30 @@ namespace TrueSync.Physics3D {
             }
             set
             {
-                if (!isActive && value)
-                {
-                    // if inactive and should be active
-                    inactiveTime = FP.Zero;
-                }
-                else if (isActive && !value)
-                {
-                    // if active and should be inactive
-                    inactiveTime = FP.PositiveInfinity;
-                    this.angularVelocity.MakeZero();
-                    this.linearVelocity.MakeZero();
-                }
+				if (isActive != value)
+				{
+					if (!isActive && value)
+					{
+						// if inactive and should be active
+						inactiveTime = FP.Zero;
+					}
+					else if (isActive && !value)
+					{
+						// if active and should be inactive
+						inactiveTime = FP.PositiveInfinity;
+						this.angularVelocity.MakeZero();
+						this.linearVelocity.MakeZero();
+					}
 
-                isActive = value;
-            }
-        }
+					IsActiveChanged = true;
+					isActive = value;
+				}
+			}
+		}
 
+        /// <summary>
+        /// 是否触发器
+        /// </summary>
 		public bool IsColliderOnly
 		{
 			get 
@@ -521,41 +558,108 @@ namespace TrueSync.Physics3D {
             }
         }
 
-        /// <summary>
-        /// The current position of the body.
-        /// </summary>
-        public TSVector Position
+//#if UNITY_EDITOR
+		public UnityEngine.GameObject gameObject
+		{
+			get
+			{
+				return PhysicsWorldManager.instance.GetGameObject(this);
+			}
+		}
+//#endif
+
+		/// <summary>
+		/// The current position of the body.
+		/// </summary>
+		public TSVector Position
         {
             get { return position; }
             set {
-                if ((_freezeConstraints & TSRigidBodyConstraints.FreezePosition) > 0) {
-                    _freezePosition = value;
-                }
+				SetPositionRaw(ref value);
+			}
+		}
+		public void SetPositionRaw(ref TSVector value)
+		{
+			// {
+			// 	if ((_freezeConstraints & TSRigidBodyConstraints.FreezePosition) > 0)
+			// 	{
+			// 		_freezePosition = value;
+			// 	}
 
-                position = value ; Update();
-            }
-        }
+			// 	position = value;
+			// 	IsPositionDirty = true;
+			// }
+            SetPosition(ref value);
+			UpdateDiff();
+		}
 
-        /// <summary>
-        /// The current oriention of the body.
-        /// </summary>
-        public TSMatrix Orientation
+		public bool IsOrientationDirty = true;
+		public bool IsPositionDirty = true;
+		// public bool needInit = true;
+		public void SetPosition(ref TSVector value)
+		{
+			if (position != value)
+			{
+				IsPositionDirty = true;
+
+                if ((_freezeConstraints & TSRigidBodyConstraints.FreezePosition) > 0)
+				{
+					_freezePosition = value;
+				}
+
+				position = value;
+			}
+		}
+
+		/// <summary>
+		/// The current oriention of the body.
+		/// - 仅仅包含朝向信息(旋转信息)
+		/// </summary>
+		public TSMatrix Orientation
         {
             get { return orientation; }
             set {
-                if ((_freezeConstraints & TSRigidBodyConstraints.FreezeRotation) > 0) {
-                    _freezeRotation = value;
-                    _freezeRotationQuat = TSQuaternion.CreateFromMatrix(_freezeRotation);
-                }
+				// if (needInit)
+				// {
+				// 	needInit = false;
 
-                orientation = value; Update();
+				// 	if ((_freezeConstraints & TSRigidBodyConstraints.FreezeRotation) > 0)
+				// 	{
+				// 		_freezeRotation = value;
+				// 		_freezeRotationQuat = TSQuaternion.CreateFromMatrix(_freezeRotation);
+				// 	}
+
+				// 	orientation = value;
+				// 	IsOrientationDirty = true;
+				// }
+				// else
+				// {
+				 SetOrientation(ref value);
+				// }
+				UpdateDiff();
             }
-        }
+		}
 
-        /// <summary>
-        /// If set to true the body can't be moved.
-        /// </summary>
-        public bool IsStatic
+		public void SetOrientation(ref TSMatrix value)
+		{
+			if (orientation != value)
+			{
+				IsOrientationDirty = true;
+
+				if ((_freezeConstraints & TSRigidBodyConstraints.FreezeRotation) > 0)
+				{
+					_freezeRotation = value;
+					_freezeRotationQuat = TSQuaternion.CreateFromMatrix(_freezeRotation);
+				}
+
+				orientation = value;
+            }
+		}
+
+		/// <summary>
+		/// If set to true the body can't be moved.
+		/// </summary>
+		public bool IsStatic
         {
             get
             {
@@ -676,12 +780,27 @@ namespace TrueSync.Physics3D {
             }
         }
 
-        /// <summary>
-        /// Recalculates the axis aligned bounding box and the inertia
-        /// values in world space.
-        /// </summary>
-        public virtual void Update()
-        {
+		protected TSBBox orienBoundingBox = new TSBBox();
+
+		public string colKey;
+		protected void updateColKey()
+		{
+			colKey = $"{this.GetInstance()}_{this.position}";
+		}
+
+		/// <summary>
+		/// Recalculates the axis aligned bounding box and the inertia
+		/// values in world space.
+		/// </summary>
+		public virtual void Update(bool updateCol = true)
+		{
+			Profiler.BeginSample("RigidBody_Update");
+			IsOrientationDirty = true;
+			UpdateDiff(updateCol);
+			Profiler.EndSample();
+		}
+		public virtual void UpdateDiff(bool updateCol = true)
+		{
             if (isParticle)
             {
                 this.inertia = TSMatrix.Zero;
@@ -695,20 +814,51 @@ namespace TrueSync.Physics3D {
             }
             else
             {
-                // Given: Orientation, Inertia
-                TSMatrix.Transpose(ref orientation, out invOrientation);
-                this.Shape.GetBoundingBox(ref orientation, out boundingBox);
-                TSVector.Add(ref boundingBox.min, ref this.position, out boundingBox.min);
-                TSVector.Add(ref boundingBox.max, ref this.position, out boundingBox.max);
+				if (IsOrientationDirty)
+				{
+					IsOrientationDirty = false;
+					IsPositionDirty = false;
+
+					// Given: Orientation, Inertia
+					TSMatrix.Transpose(ref orientation, out invOrientation);
+					this.Shape.GetBoundingBox(ref orientation, out boundingBox);
+
+					// 缓存
+					// orienBoundingBox.min.MergeFrom(ref boundingBox.min);
+					// orienBoundingBox.max.MergeFrom(ref boundingBox.max);
+                    orienBoundingBox = boundingBox;
+
+					TSVector.Add(ref boundingBox.min, ref this.position, out boundingBox.min);
+					TSVector.Add(ref boundingBox.max, ref this.position, out boundingBox.max);
 
 
-                if (!isStatic)
-                {
-                    TSMatrix.Multiply(ref invOrientation, ref invInertia, out invInertiaWorld);
-                    TSMatrix.Multiply(ref invInertiaWorld, ref orientation, out invInertiaWorld);
-                }
-            }
-        }
+					if (!isStatic)
+					{
+						TSMatrix.Multiply(ref invOrientation, ref invInertia, out invInertiaWorld);
+						TSMatrix.Multiply(ref invInertiaWorld, ref orientation, out invInertiaWorld);
+					}
+
+					if (updateCol)
+					{
+						updateColKey();
+					}
+				}
+				else
+				{
+					if (IsPositionDirty)
+					{
+						IsPositionDirty=false;
+						TSVector.Add(ref orienBoundingBox.min, ref this.position, out boundingBox.min);
+						TSVector.Add(ref orienBoundingBox.max, ref this.position, out boundingBox.max);
+
+						if (updateCol)
+						{
+							updateColKey();
+						}
+					}
+				}
+			}
+		}
 
         public bool Equals(RigidBody other)
         {
@@ -806,8 +956,14 @@ namespace TrueSync.Physics3D {
                 Position = value;
             }
         }
+		public void SetTSPosition(ref TSVector pos)
+		{
+			SetPositionRaw(ref pos);
+		}
 
-        public TSMatrix TSOrientation {
+        public ref TSVector ReferTSPosition => ref position;
+
+		public TSMatrix TSOrientation {
             get {
                 return Orientation;
             }
@@ -817,7 +973,19 @@ namespace TrueSync.Physics3D {
             }
         }
 
-        public FP TSLinearDrag {
+		public TSVector TSScale
+		{
+			get
+			{
+				return GetScale();
+			}
+			set
+			{
+				SetScale(value);
+			}
+		}
+
+		public FP TSLinearDrag {
             get {
                 return linearDrag;
             }
@@ -857,13 +1025,20 @@ namespace TrueSync.Physics3D {
             }
         }
 
-        private List<TSVector> hullPoints = new List<TSVector>();
+		public bool isEnabled;
+		public bool IsEnabled
+		{
+			get => isEnabled;
+			set => isEnabled = value;
+		}
+
+		private List<TSVector> hullPoints = new List<TSVector>();
 
         private void UpdateHullData()
         {
             hullPoints.Clear();
 
-            if(enableDebugDraw) shape.MakeHull(ref hullPoints, 3);
+			if (enableDebugDraw) shape.MakeScaledHull(ref hullPoints, 3);
         }
 
 
@@ -895,6 +1070,8 @@ namespace TrueSync.Physics3D {
 		}
 
         internal void PostStep() {
+            this.IsActiveChanged = false;
+
             if (_freezeConstraints > 0) {
                 bool freezePosX = (_freezeConstraints & TSRigidBodyConstraints.FreezePositionX) == TSRigidBodyConstraints.FreezePositionX;
                 bool freezePosY = (_freezeConstraints & TSRigidBodyConstraints.FreezePositionY) == TSRigidBodyConstraints.FreezePositionY;
@@ -966,6 +1143,19 @@ namespace TrueSync.Physics3D {
             AddRelativeTorque(force);
         }
 
-    }
+		// public TSVector fixedDeltaMove = TSVector.zero;
+		public void Move(TSVector deltaMove)
+		{
+			// fixedDeltaMove = deltaMove;
+			this.position += deltaMove;
+		}
+
+		internal TSVector lastPosition;
+		internal virtual void RecordRigidBodyTransform()
+		{
+			this.lastPosition = position;
+		}
+
+	}
 
 }

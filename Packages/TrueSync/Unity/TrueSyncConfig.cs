@@ -83,21 +83,22 @@ namespace TrueSync {
          * @brief Returns true if the collision between layerA and layerB should be ignored.
          **/
         public bool GetIgnoreLayerCollision(int layerA, int layerB) {
-            if (layerB < layerA) {
-                int aux = layerA;
-                layerA = layerB;
-                layerB = aux;
-            }
+            return Physics.GetIgnoreLayerCollision(layerA,layerB);
+            // if (layerB < layerA) {
+            //     int aux = layerA;
+            //     layerA = layerB;
+            //     layerB = aux;
+            // }
 
-            int matrixIndex = ((COLLISION_LAYERS + COLLISION_LAYERS - layerA + 1) * layerA) / 2 + layerB;
+            // int matrixIndex = ((COLLISION_LAYERS + COLLISION_LAYERS - layerA + 1) * layerA) / 2 + layerB;
 
-            if (physics2DEnabled) {
-                return physics2DIgnoreMatrix[matrixIndex];
-            } else if (physics3DEnabled) {
-                return physics3DIgnoreMatrix[matrixIndex];
-            }
+            // if (physics2DEnabled) {
+            //     return physics2DIgnoreMatrix[matrixIndex];
+            // } else if (physics3DEnabled) {
+            //     return physics3DIgnoreMatrix[matrixIndex];
+            // }
 
-            return false;
+            // return false;
         }
 
     }

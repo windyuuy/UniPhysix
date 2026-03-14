@@ -23,6 +23,10 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 #endregion
 
+#if UNITY_5_5_OR_NEWER
+using UnityEngine.Profiling;
+#endif
+
 namespace TrueSync.Physics3D
 {
 
@@ -543,11 +547,11 @@ namespace TrueSync.Physics3D
             // throw exception if the timestep is smaller zero.
             if (timestep < FP.Zero) throw new ArgumentException("The timestep can't be negative.", "timestep");
 
-            // Calculate this
+			// Calculate this
 			//currentAngularDampFactor = (FP)Math.Pow((double)(float)angularDamping, (double)(float)timestep);
 			//currentLinearDampFactor = (FP)Math.Pow((double)(float)linearDamping, (double)(float)timestep);
 
-#if(WINDOWS_PHONE)
+#if (WINDOWS_PHONE)
             events.RaiseWorldPreStep(timestep);
             foreach (RigidBody body in rigidBodies) body.PreStep(timestep);
             UpdateContacts();
@@ -573,11 +577,16 @@ namespace TrueSync.Physics3D
             foreach (RigidBody body in rigidBodies) body.PostStep(timestep);
             events.RaiseWorldPostStep(timestep);
 #else
-            events.RaiseWorldPreStep(timestep);
+			Profiler.BeginSample("RaiseWorldPreStep");
+			events.RaiseWorldPreStep(timestep);
+			Profiler.EndSample();
 
-            UpdateContacts();
+			Profiler.BeginSample("UpdateContacts");
+			UpdateContacts();
+			Profiler.EndSample();
 
-            for (int index = 0, length = initialCollisions.Count; index < length; index++) {
+			Profiler.BeginSample("RaiseBodiesStayCollide");
+			for (int index = 0, length = initialCollisions.Count; index < length; index++) {
                 OverlapPairContact op = initialCollisions[index];
                 events.RaiseBodiesStayCollide(op.contact);
 			}
@@ -586,27 +595,47 @@ namespace TrueSync.Physics3D
                 OverlapPairContact op = initialTriggers[index];
                 events.RaiseTriggerStayCollide(op.contact);
             }
+			Profiler.EndSample();
 
-            while (removedArbiterQueue.Count > 0) islands.ArbiterRemoved(removedArbiterQueue.Dequeue());
+			Profiler.BeginSample("Foreach_ArbiterRemoved");
+			while (removedArbiterQueue.Count > 0) islands.ArbiterRemoved(removedArbiterQueue.Dequeue());
+			Profiler.EndSample();
 
-            for (int index = 0, length = softbodies.Count; index < length; index++) {
+			Profiler.BeginSample("Foreach_DoSelfCollision");
+			for (int index = 0, length = softbodies.Count; index < length; index++) {
                 SoftBody body = softbodies[index];
                 body.Update(timestep);
                 body.DoSelfCollision(collisionDetectionHandler);
             }
+			Profiler.EndSample();
 
-            CollisionSystem.Detect();
+			CollisionSystem.Detect();
 
-            while (addedArbiterQueue.Count > 0) islands.ArbiterCreated(addedArbiterQueue.Dequeue());
-            
-            CheckDeactivation();
+			Profiler.BeginSample("Foreach_ArbiterCreated");
+			while (addedArbiterQueue.Count > 0) islands.ArbiterCreated(addedArbiterQueue.Dequeue());
+			Profiler.EndSample();
 
-            IntegrateForces();
+			Profiler.BeginSample("CheckDeactivation");
+			CheckDeactivation();
+			Profiler.EndSample();
 
-            HandleArbiter(contactIterations);
+			Profiler.BeginSample("IntegrateForces");
+			IntegrateForces();
+			Profiler.EndSample();
 
-            Integrate();
+			Profiler.BeginSample("HandleArbiter");
+			HandleArbiter(contactIterations);
+			Profiler.EndSample();
 
+			Profiler.BeginSample("Integrate");
+			Integrate();
+			Profiler.EndSample();
+
+            Profiler.BeginSample("CleanArbiter");
+            CleanArbiter();
+            Profiler.EndSample();
+
+            Profiler.BeginSample("PostStep");
             for (int index = 0, length = rigidBodies.Count; index < length; index++) {
                 RigidBody body = rigidBodies[index];
                 body.PostStep();
@@ -615,12 +644,78 @@ namespace TrueSync.Physics3D
                     body.constraints[index2].PostStep();
                 }
             }
+			Profiler.EndSample();
 
-            events.RaiseWorldPostStep(timestep);
+			Profiler.BeginSample("RaiseWorldPostStep");
+			events.RaiseWorldPostStep(timestep);
+			Profiler.EndSample();
 #endif
+		}
+
+		/// <summary>
+		/// 清理过时的碰撞缓存
+		/// </summary>
+		/// <param name="body1"></param>
+		/// <param name="body2"></param>
+		private void CleanArbiter(RigidBody body1,RigidBody body2)
+        {
+            bool anyBodyColliderOnly = body1.IsColliderOnly || body2.IsColliderOnly;
+            Arbiter arbiter = null;
+            ArbiterMap selectedArbiterMap = null;
+            if (anyBodyColliderOnly)
+            {
+                selectedArbiterMap = arbiterTriggerMap;
+            }
+            else
+            {
+                selectedArbiterMap = arbiterMap;
+            }
+
+            bool arbiterCreated = false;
+
+            lock (selectedArbiterMap)
+            {
+                selectedArbiterMap.LookUpArbiter(body1, body2, out arbiter);
+                if (arbiter != null)
+                {
+                    selectedArbiterMap.Remove(arbiter);
+                    arbiterCreated = true;
+                }
+            }
+
+            if (arbiterCreated)
+            {
+                if (anyBodyColliderOnly)
+                {
+                    body1.arbitersTrigger.Remove(arbiter);
+                    body2.arbitersTrigger.Remove(arbiter);
+                    cacheOverPairContact.SetBodies(arbiter.body1, arbiter.body2);
+                    initialTriggers.Remove(cacheOverPairContact);
+                }
+                else
+                {
+                    cacheOverPairContact.SetBodies(arbiter.body1, arbiter.body2);
+                    initialCollisions.Remove(cacheOverPairContact);
+                }
+            }
         }
 
-		public FP accumulatedTime = FP.Zero;
+        private void CleanArbiter()
+        {
+            foreach(var body1 in rigidBodies)
+            {
+                if(body1.IsActiveChanged && !body1.IsActive)
+                {
+                    foreach(var body2 in rigidBodies)
+                    {
+                        CleanArbiter(body1, body2);
+                    }
+                }
+            }
+        }
+
+
+        public FP accumulatedTime = FP.Zero;
 
         /// <summary>
         /// Integrates the whole world several fixed timestep further in time.
@@ -655,13 +750,7 @@ namespace TrueSync.Physics3D
         }
 
         private void UpdateArbiterContacts(Arbiter arbiter)
-        {
-            if (arbiter.contactList.Count == 0)
-            {
-                lock (removedArbiterStack) { removedArbiterStack.Push(arbiter); }
-                return;
-            }
-
+		{
             for (int i = arbiter.contactList.Count - 1; i >= 0; i--)
             {
                 Contact c = arbiter.contactList[i];
@@ -692,11 +781,19 @@ namespace TrueSync.Physics3D
                 }
 
             }
-        }
+
+			// 清理完 arbiter.contactList 之后, 再判断是否需要移除清空碰撞关系
+			if (arbiter.contactList.Count == 0)
+			{
+				lock (removedArbiterStack) { removedArbiterStack.Push(arbiter); }
+				return;
+			}
+
+		}
 
         public Stack<Arbiter> removedArbiterStack = new Stack<Arbiter>();
 
-        private void UpdateContacts()
+		private void UpdateContacts()
         {
             UpdateContacts(arbiterMap);
             UpdateContacts(arbiterTriggerMap);
@@ -731,8 +828,8 @@ namespace TrueSync.Physics3D
             }
         }
 
-        #region private void ArbiterCallback(object obj)
-        private void ArbiterCallback(object obj)
+		#region private void ArbiterCallback(object obj)
+		private void ArbiterCallback(object obj)
         {
             CollisionIsland island = obj as CollisionIsland;
 
@@ -749,8 +846,14 @@ namespace TrueSync.Physics3D
                     int contactCount = arbiter.contactList.Count;
                     for (int e = 0; e < contactCount; e++)
                     {
-                        if (i == -1) arbiter.contactList[e].PrepareForIteration(timestep);
-                        else arbiter.contactList[e].Iterate();
+                        if (i == -1)
+                        {
+                            arbiter.contactList[e].PrepareForIteration(timestep);
+                        }
+                        else
+                        {
+                            arbiter.contactList[e].Iterate();
+                        }
                     }
                 }
 
@@ -761,8 +864,14 @@ namespace TrueSync.Physics3D
                     if (c.body1 != null && !c.body1.IsActive && c.body2 != null && !c.body2.IsActive)
                         continue;
 
-                    if (i == -1) c.PrepareForIteration(timestep);
-                    else c.Iterate();
+                    if (i == -1)
+                    {
+                        c.PrepareForIteration(timestep);
+                    }
+                    else
+                    {
+                        c.Iterate();
+                    }
                 }
 
             }
@@ -812,9 +921,14 @@ namespace TrueSync.Physics3D
         {
             RigidBody body = obj as RigidBody;
 
-            TSVector temp;
+			// 按照rigidbody线性速度计算并应用位移
+			TSVector temp;
             TSVector.Multiply(ref body.linearVelocity, timestep, out temp);
             TSVector.Add(ref temp, ref body.position, out body.position);
+
+            // 应用固定长度位移
+            //TSVector.Add(ref body.fixedDeltaMove, ref body.position, out body.position);
+            //body.fixedDeltaMove = TSVector.zero;
 
             if (!(body.isParticle))
             {
@@ -866,7 +980,9 @@ namespace TrueSync.Physics3D
             for (int index = 0, length = rigidBodies.Count; index < length; index++) {
                 RigidBody body = rigidBodies[index];
                 if (body.isStatic || !body.IsActive) continue;
+                Profiler.BeginSample($"integrateCallback_{body.gameObject.name}");
                 integrateCallback(body);
+                Profiler.EndSample();
             }
         }
 
@@ -921,7 +1037,7 @@ namespace TrueSync.Physics3D
             Contact contact = null;
 
             if (arbiter.body1 == body1) {
-                TSVector.Negate(ref normal, out normal);
+                //TSVector.Negate(ref normal, out normal);
                 contact = arbiter.AddContact(point1, point2, normal, penetration, contactSettings);
             } else {
                 contact = arbiter.AddContact(point2, point1, normal, penetration, contactSettings);

@@ -315,6 +315,16 @@ namespace TrueSync {
             result.y = TSMath.Hermite(value1.y, tangent1.y, value2.y, tangent2.y, amount);
         }
 
+        public FP sqrMagnitude
+        {
+            get
+            {
+                FP result;
+                DistanceSquared(ref this, ref zeroVector, out result);
+                return result;
+            }
+        }
+
         public FP magnitude {
             get {
                 FP result;
@@ -580,6 +590,11 @@ namespace TrueSync {
             return value1;
         }
 
-        #endregion Operators
-    }
+		public static FP ModSqrt(FP value1, FP value2)
+		{
+			return value1 * value1 + value2 * value2;
+		}
+
+		#endregion Operators
+	}
 }

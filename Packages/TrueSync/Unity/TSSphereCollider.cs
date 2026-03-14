@@ -9,9 +9,16 @@ namespace TrueSync {
     [AddComponentMenu("TrueSync/Physics/SphereCollider", 0)]
     public class TSSphereCollider : TSCollider {
 
-        [FormerlySerializedAs("radius")]
+		public SphereShape ShapeSpecific => Shape as SphereShape;
+		protected void updateShape()
+		{
+			ShapeSpecific.Scale = this.tsTransform.lossyScale;
+			ShapeSpecific.Radius = _radius;
+		}
+
+		[FormerlySerializedAs("radius")]
         [SerializeField]
-        private float _radius;
+		private FP _radius;
 
         /**
          *  @brief Radius of the sphere. 
@@ -26,7 +33,7 @@ namespace TrueSync {
             }
 
             set {
-                _radius = value.AsFloat();
+				_radius = value;
 
                 if (_body != null) {
                     ((SphereShape)_body.Shape).Radius = value;
@@ -34,10 +41,10 @@ namespace TrueSync {
             }
         }
 
-        /**
+		/**
          *  @brief Sets initial values to {@link #radius} based on a pre-existing SphereCollider or CircleCollider2D.
          **/
-        public void Reset() {
+		public void Reset() {
             if (GetComponent<CircleCollider2D>() != null) {
                 CircleCollider2D circleCollider2D = GetComponent<CircleCollider2D>();
 
@@ -65,6 +72,8 @@ namespace TrueSync {
         }
 
         protected override Vector3 GetGizmosSize() {
+			updateShape();
+			var radius = ShapeSpecific.ScaledRadius;
             return Vector3.one * radius.AsFloat();
         }
 

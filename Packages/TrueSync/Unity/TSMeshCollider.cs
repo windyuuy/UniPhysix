@@ -11,7 +11,24 @@ namespace TrueSync {
     [AddComponentMenu("TrueSync/Physics/MeshCollider", 0)]
     public class TSMeshCollider : TSCollider {
 
-        [SerializeField]
+		public TriangleMeshShape ShapeSpecific => Shape as TriangleMeshShape;
+		protected void updateShape()
+		{
+			ShapeSpecific.Scale = this.tsTransform.lossyScale;
+		}
+
+		public void updateMesh()
+		{
+			// 缺少
+			vertices = GetVertices();
+			indices = GetIndices();
+			var meshInfo = new TriangleMeshInfo(Vertices, Indices);
+			// 避开不必要的重复初始化
+			var needUpdate = this._body != null;
+			this.ShapeSpecific.SetMeshInfo(meshInfo, needUpdate);
+		}
+
+		[SerializeField]
         private Mesh mesh;
 
         /**
@@ -20,13 +37,9 @@ namespace TrueSync {
         public Mesh Mesh {
             get { return mesh; }
             set {
-                mesh = value;
-                vertices = GetVertices();
-                indices = GetIndices();
+				mesh = value;
 
-                if (_body != null) {
-                    _body.Shape = CreateShape();
-                }
+				updateMesh();
             }
         }
 
@@ -66,12 +79,12 @@ namespace TrueSync {
             }
         }
 
-        /**
+		/**
          *  @brief Creates a shape based on attached mesh. 
          **/
-        public override Shape CreateShape() {
-            var octree = new Octree(Vertices, Indices);
-            return new TriangleMeshShape(octree);
+		public override Shape CreateShape()
+		{
+			return new TriangleMeshShape();
         }
 
         private List<TriangleVertexIndices> GetIndices() {
@@ -83,13 +96,16 @@ namespace TrueSync {
         }
 
         private List<TSVector> GetVertices() {
-            var result = mesh.vertices.Select(p => new TSVector(p.x * lossyScale.x, p.y * lossyScale.y, p.z * lossyScale.z)).ToList();
-            return result;
+			var lossyScale = ShapeSpecific.GetShapeScale();
+			var result = mesh.vertices.Select(p => new TSVector(p.x * lossyScale.x, p.y * lossyScale.y, p.z * lossyScale.z)).ToList();
+			return result;
         }
 
         protected override Vector3 GetGizmosSize() {
-            return lossyScale.ToVector();
-        }
+			updateShape();
+			return ShapeSpecific.GetShapeScale().ToVector();
+			// return lossyScale.ToVector();
+		}
 
         protected override void DrawGizmos() {
             Gizmos.DrawWireMesh(mesh);

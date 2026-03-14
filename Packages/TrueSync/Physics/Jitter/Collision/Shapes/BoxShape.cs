@@ -1,4 +1,5 @@
-﻿/* Copyright (C) <2009-2011> <Thorben Linneweber, Jitter Physics>
+﻿using System.Drawing;
+/* Copyright (C) <2009-2011> <Thorben Linneweber, Jitter Physics>
 * 
 *  This software is provided 'as-is', without any express or implied
 *  warranty.  In no event will the authors be held liable for any damages
@@ -29,7 +30,8 @@ namespace TrueSync.Physics3D {
     /// </summary>
     public class BoxShape : Shape
     {
-        internal TSVector size = TSVector.zero;
+
+		internal TSVector size = TSVector.zero;
 
         /// <summary>
         /// The sidelength of the box.
@@ -38,12 +40,24 @@ namespace TrueSync.Physics3D {
             get { return size; }
             set { size = value; UpdateShape(); }
         }
-        
-        /// <summary>
-        /// Creates a new instance of the BoxShape class.
-        /// </summary>
-        /// <param name="size">The size of the box.</param>
-        public BoxShape(TSVector size)
+
+		protected TSVector _scaledSize = new TSVector();
+		public TSVector ScaledSize
+		{
+			get
+			{
+				var scale = this.GetShapeScale();
+				_scaledSize.MergeFrom(Size);
+                _scaledSize.MultiplyPairSelf(scale);
+				return _scaledSize;
+			}
+		}
+
+		/// <summary>
+		/// Creates a new instance of the BoxShape class.
+		/// </summary>
+		/// <param name="size">The size of the box.</param>
+		public BoxShape(TSVector size)
         {
             this.size = size;
             this.UpdateShape();
@@ -65,15 +79,39 @@ namespace TrueSync.Physics3D {
 
         internal TSVector halfSize = TSVector.zero;
 
-        /// <summary>
-        /// This method uses the <see cref="ISupportMappable"/> implementation
-        /// to calculate the local bounding box, the mass, geometric center and 
-        /// the inertia of the shape. In custom shapes this method should be overidden
-        /// to compute this values faster.
-        /// </summary>
-        public override void UpdateShape()
+		protected TSVector _scaledHalfSize = new TSVector();
+		public ref TSVector ScaledHalfSize
+		{
+			get
+			{
+				return ref GetScaledHalfSize();
+			}
+		}
+
+		public ref TSVector GetCachedScaledHalfSize()
+		{
+			return ref _scaledHalfSize;
+		}
+
+		public ref TSVector GetScaledHalfSize()
+		{
+			var scale = this.GetShapeScale();
+			_scaledHalfSize.MergeFrom(Size);
+			_scaledHalfSize.MultiplyPairSelf(scale);
+			_scaledHalfSize *= 0.5;
+			return ref _scaledHalfSize;
+		}
+
+		/// <summary>
+		/// This method uses the <see cref="ISupportMappable"/> implementation
+		/// to calculate the local bounding box, the mass, geometric center and 
+		/// the inertia of the shape. In custom shapes this method should be overidden
+		/// to compute this values faster.
+		/// </summary>
+		public override void UpdateShape()
         {
             this.halfSize = size * FP.Half;
+			this.GetScaledHalfSize();
             base.UpdateShape();
         }
 
@@ -86,7 +124,8 @@ namespace TrueSync.Physics3D {
         {
             TSMatrix abs; TSMath.Absolute(ref orientation, out abs);
             TSVector temp;
-            TSVector.Transform(ref halfSize, ref abs, out temp);
+			var halfSize = _scaledHalfSize;
+			TSVector.Transform(ref halfSize, ref abs, out temp);
 
             box.max = temp;
             TSVector.Negate(ref temp, out box.min);
@@ -100,7 +139,9 @@ namespace TrueSync.Physics3D {
         /// </summary>
         public override void CalculateMassInertia()
         {
-            mass = size.x * size.y * size.z;
+			var size = this.ScaledSize;
+
+			mass = size.x * size.y * size.z;
 
             inertia = TSMatrix.Identity;
             inertia.M11 = (FP.One / (12 * FP.One)) * mass * (size.y * size.y + size.z * size.z);
@@ -119,7 +160,10 @@ namespace TrueSync.Physics3D {
         /// <param name="result">The result.</param>
         public override void SupportMapping(ref TSVector direction, out TSVector result)
         {
-            result.x = FP.Sign(direction.x) * halfSize.x;
+			// TODO: 检查是否缺少center偏移
+			ref var halfSize = ref this.ScaledHalfSize;
+
+			result.x = FP.Sign(direction.x) * halfSize.x;
             result.y = FP.Sign(direction.y) * halfSize.y;
             result.z = FP.Sign(direction.z) * halfSize.z;
         }

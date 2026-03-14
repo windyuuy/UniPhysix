@@ -29,18 +29,37 @@ namespace TrueSync.Physics3D {
     /// </summary>
     public class SphereShape : Shape
     {
-        internal FP radius = FP.One;
+
+		protected override void setScale(TSVector value)
+		{
+			base.setScale(value);
+
+			var scaleExpand = TSMath.Max(scale.x, scale.y, scale.z);
+			_shapeScale.x = scaleExpand;
+			_shapeScale.y = scaleExpand;
+			_shapeScale.z = scaleExpand;
+		}
+
+		internal FP radius = FP.One;
 
         /// <summary>
         /// The radius of the sphere.
         /// </summary>
         public FP Radius { get { return radius; } set { radius = value; UpdateShape(); } }
 
-        /// <summary>
-        /// Creates a new instance of the SphereShape class.
-        /// </summary>
-        /// <param name="radius">The radius of the sphere</param>
-        public SphereShape(FP radius)
+		public FP ScaledRadius
+		{
+			get
+			{
+				return radius * GetShapeScale().x;
+			}
+		}
+
+		/// <summary>
+		/// Creates a new instance of the SphereShape class.
+		/// </summary>
+		/// <param name="radius">The radius of the sphere</param>
+		public SphereShape(FP radius)
         {
             this.radius = radius;
             this.UpdateShape();
@@ -55,7 +74,9 @@ namespace TrueSync.Physics3D {
         /// <param name="result">The result.</param>
         public override void SupportMapping(ref TSVector direction, out TSVector result)
         {
-            result = direction;
+			var radius = this.ScaledRadius;
+
+			result = direction;
             result.Normalize();
 
             TSVector.Multiply(ref result, radius, out result);
@@ -68,7 +89,9 @@ namespace TrueSync.Physics3D {
         /// <param name="box">The resulting axis aligned bounding box.</param>
         public override void GetBoundingBox(ref TSMatrix orientation, out TSBBox box)
         {
-            box.min.x = -radius;
+			var radius = this.ScaledRadius;
+
+			box.min.x = -radius;
             box.min.y = -radius;
             box.min.z = -radius;
             box.max.x = radius;
@@ -81,7 +104,9 @@ namespace TrueSync.Physics3D {
         /// </summary>
         public override void CalculateMassInertia()
         {
-            mass = ((4 * FP.One) / (3 * FP.One)) * TSMath.Pi * radius * radius * radius;
+			var radius = this.ScaledRadius;
+
+			mass = ((4 * FP.One) / (3 * FP.One)) * TSMath.Pi * radius * radius * radius;
 
             // (0,0,0) is the center of mass, so only
             // the main matrix elements are != 0

@@ -47,10 +47,41 @@ namespace TrueSync.Physics3D {
         internal TSBBox boundingBox = TSBBox.LargeBox;
         internal TSVector geomCen = TSVector.zero;
 
-        /// <summary>
-        /// Gets called when the shape changes one of the parameters.
-        /// </summary>
-        public event ShapeUpdatedHandler ShapeUpdated;
+		protected TSVector scale = new TSVector(1, 1, 1);
+
+		protected TSVector _shapeScale = new TSVector(1, 1, 1);
+
+		internal TSVector Scale
+		{
+			get => getScale();
+			set => setScale(value);
+		}
+
+		protected virtual TSVector getScale()
+		{
+			return this.scale;
+		}
+
+		protected virtual void setScale(TSVector value)
+		{
+			if (this.scale != value)
+			{
+				this.scale = value;
+				// _shapeScale.MergeFrom(ref value);
+				_shapeScale = value;
+				UpdateShape();
+            }
+		}
+
+		public virtual TSVector GetShapeScale()
+		{
+			return _shapeScale;
+		}
+
+		/// <summary>
+		/// Gets called when the shape changes one of the parameters.
+		/// </summary>
+		public event ShapeUpdatedHandler ShapeUpdated;
 
         /// <summary>
         /// Creates a new instance of a shape.
@@ -96,15 +127,27 @@ namespace TrueSync.Physics3D {
             public int generation;
         };
 
-        /// <summary>
-        /// Hull making.
-        /// </summary>
-        /// <remarks>Based/Completely from http://www.xbdev.net/physics/MinkowskiDifference/index.php
-        /// I don't (100%) see why this should always work.
-        /// </remarks>
-        /// <param name="triangleList"></param>
-        /// <param name="generationThreshold"></param>
-        public virtual void MakeHull(ref List<TSVector> triangleList, int generationThreshold)
+		public virtual void MakeScaledHull(ref List<TSVector> triangleList, int generationThreshold)
+		{
+			MakeHull(ref triangleList, generationThreshold);
+
+			// scale
+			var scale = GetShapeScale();
+			foreach (var tri in triangleList)
+			{
+				tri.MultiplyPairSelf(scale);
+			}
+		}
+
+		/// <summary>
+		/// Hull making.
+		/// </summary>
+		/// <remarks>Based/Completely from http://www.xbdev.net/physics/MinkowskiDifference/index.php
+		/// I don't (100%) see why this should always work.
+		/// </remarks>
+		/// <param name="triangleList"></param>
+		/// <param name="generationThreshold"></param>
+		protected virtual void MakeHull(ref List<TSVector> triangleList, int generationThreshold)
         {
             FP distanceThreshold = FP.Zero;
 
@@ -285,14 +328,14 @@ namespace TrueSync.Physics3D {
 
             // build a triangle hull around the shape
             List<TSVector> hullTriangles = new List<TSVector>();
-            shape.MakeHull(ref hullTriangles, 3);
+			shape.MakeScaledHull(ref hullTriangles, 3);
 
             // create inertia of tetrahedron with vertices at
             // (0,0,0) (1,0,0) (0,1,0) (0,0,1)
             FP a = FP.One / (60 * FP.One), b = FP.One / (120 * FP.One);
             TSMatrix C = new TSMatrix(a, b, b, b, a, b, b, b, a);
 
-            for (int i = 0; i < hullTriangles.Count; i += 3)
+			for (int i = 0; i < hullTriangles.Count; i += 3)
             {
                 TSVector column0 = hullTriangles[i + 0];
                 TSVector column1 = hullTriangles[i + 1];

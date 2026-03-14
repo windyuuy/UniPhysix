@@ -1,0 +1,12 @@
+{
+    "name": "TrueSyncEditor",
+    "references": [
+        "TrueSync"
+    ],
+    "optionalUnityReferences": [],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false
+}

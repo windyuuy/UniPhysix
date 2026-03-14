@@ -69,7 +69,11 @@ namespace TrueSync.Physics3D {
 
         private int index, length;
 
-        public void Reset() {
+		public bool IsOrientationDirty = true;
+		public bool IsPositionDirty = true;
+		public bool needInit = true;
+
+		public void Reset() {
             if (this.shapeClone != null) {
                 poolGenericShapeClone.GiveBack(this.shapeClone);
             }
@@ -126,6 +130,10 @@ namespace TrueSync.Physics3D {
             this.angularDrag = rb.angularDrag;
             this.staticFriction = rb.staticFriction;
             this.restitution = rb.restitution;
+
+			this.IsOrientationDirty = rb.IsOrientationDirty;
+			this.IsPositionDirty = rb.IsPositionDirty;
+			//this.needInit = rb.needInit;
         }
 
 		public void Restore(World world, RigidBody rb) {
@@ -180,7 +188,11 @@ namespace TrueSync.Physics3D {
             rb.staticFriction = this.staticFriction;
             rb.restitution = this.restitution;
 
-            if (lastDisabled && !rb.disabled) {
+			rb.IsOrientationDirty = this.IsOrientationDirty;
+			rb.IsPositionDirty = this.IsPositionDirty;
+			//rb.needInit = this.needInit;
+
+			if (lastDisabled && !rb.disabled) {
                 world.physicsManager.GetGameObject(rb).SetActive(true);
             }
         }

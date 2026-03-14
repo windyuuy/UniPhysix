@@ -22,6 +22,10 @@ using System;
 using System.Collections.Generic;
 #endregion
 
+#if UNITY_5_5_OR_NEWER
+using UnityEngine.Profiling;
+#endif
+
 namespace TrueSync.Physics3D {
 
     /// <summary>
@@ -54,83 +58,114 @@ namespace TrueSync.Physics3D {
     public sealed class XenoCollide
     {
 
-        private static FP CollideEpsilon = FP.EN3;
-        private const int MaximumIterations = 5;
+		private static FP CollideEpsilon = FP.EN3 * 0.25f;
+		private const int MaximumIterations = 5;
 
-        private static void SupportMapTransformed(ISupportMappable support,
+		/// <summary>
+		/// 取 direction 方向上的支撑点
+		/// </summary>
+		/// <param name="support"></param>
+		/// <param name="orientation"></param>
+		/// <param name="position"></param>
+		/// <param name="direction"></param>
+		/// <param name="result"></param>
+		public static void SupportMapTransformed(ISupportMappable support,
             ref TSMatrix orientation, ref TSVector position, ref TSVector direction, out TSVector result)
         {
-            // THIS IS *THE* HIGH FREQUENCY CODE OF THE COLLLISION PART OF THE ENGINE
+			Profiler.BeginSample("SupportMapTransformed");
+			// THIS IS *THE* HIGH FREQUENCY CODE OF THE COLLLISION PART OF THE ENGINE
 
-            result.x = ((direction.x * orientation.M11) + (direction.y * orientation.M12)) + (direction.z * orientation.M13);
-            result.y = ((direction.x * orientation.M21) + (direction.y * orientation.M22)) + (direction.z * orientation.M23);
-            result.z = ((direction.x * orientation.M31) + (direction.y * orientation.M32)) + (direction.z * orientation.M33);
+			// result.x = ((direction.x * orientation.M11) + (direction.y * orientation.M12)) + (direction.z * orientation.M13);
+			// result.y = ((direction.x * orientation.M21) + (direction.y * orientation.M22)) + (direction.z * orientation.M23);
+			// result.z = ((direction.x * orientation.M31) + (direction.y * orientation.M32)) + (direction.z * orientation.M33);
 
+			FP.MultiDot(ref direction.x, ref direction.y, ref direction.z, ref orientation.M11, ref orientation.M12, ref orientation.M13, out result.x);
+			FP.MultiDot(ref direction.x, ref direction.y, ref direction.z, ref orientation.M21, ref orientation.M22, ref orientation.M23, out result.y);
+			FP.MultiDot(ref direction.x, ref direction.y, ref direction.z, ref orientation.M31, ref orientation.M32, ref orientation.M33, out result.z);
+
+			Profiler.BeginSample("SupportMapping");
             support.SupportMapping(ref result, out result);
+			Profiler.EndSample();
 
-            FP x = ((result.x * orientation.M11) + (result.y * orientation.M21)) + (result.z * orientation.M31);
-            FP y = ((result.x * orientation.M12) + (result.y * orientation.M22)) + (result.z * orientation.M32);
-            FP z = ((result.x * orientation.M13) + (result.y * orientation.M23)) + (result.z * orientation.M33);
+			// FP x = ((result.x * orientation.M11) + (result.y * orientation.M21)) + (result.z * orientation.M31);
+			// FP y = ((result.x * orientation.M12) + (result.y * orientation.M22)) + (result.z * orientation.M32);
+			// FP z = ((result.x * orientation.M13) + (result.y * orientation.M23)) + (result.z * orientation.M33);
+			// result.x = position.x + x;
+			// result.y = position.y + y;
+			// result.z = position.z + z;
 
-            result.x = position.x + x;
-            result.y = position.y + y;
-            result.z = position.z + z;
+			FP.MultiDot(ref result.x, ref result.y, ref result.z, ref orientation.M11, ref orientation.M21, ref orientation.M31, out FP.M1);
+			FP.MultiDot(ref result.x, ref result.y, ref result.z, ref orientation.M12, ref orientation.M22, ref orientation.M32, out FP.M2);
+			FP.MultiDot(ref result.x, ref result.y, ref result.z, ref orientation.M13, ref orientation.M23, ref orientation.M33, out FP.M3);
+			FP.AddRef(ref FP.M1, ref position.x, out result.x);
+			FP.AddRef(ref FP.M2, ref position.y, out result.y);
+			FP.AddRef(ref FP.M3, ref position.z, out result.z);
+
+			Profiler.EndSample();
         }
 
-        /// <summary>
-        /// Checks two shapes for collisions.
-        /// </summary>
-        /// <param name="support1">The SupportMappable implementation of the first shape to test.</param>
-        /// <param name="support2">The SupportMappable implementation of the seconds shape to test.</param>
-        /// <param name="orientation1">The orientation of the first shape.</param>
-        /// <param name="orientation2">The orientation of the second shape.</param>
-        /// <param name="position1">The position of the first shape.</param>
-        /// <param name="position2">The position of the second shape</param>
-        /// <param name="point">The pointin world coordinates, where collision occur.</param>
-        /// <param name="normal">The normal pointing from body2 to body1.</param>
-        /// <param name="penetration">Estimated penetration depth of the collision.</param>
-        /// <returns>Returns true if there is a collision, false otherwise.</returns>
-        public static bool Detect(ISupportMappable support1, ISupportMappable support2, ref TSMatrix orientation1,
-             ref TSMatrix orientation2, ref TSVector position1, ref TSVector position2,
-             out TSVector point, out TSVector normal, out FP penetration)
-        {
-            // Used variables
-            TSVector temp1, temp2;
-            TSVector v01, v02, v0;
-            TSVector v11, v12, v1;
-            TSVector v21, v22, v2;
-            TSVector v31, v32, v3;
-			TSVector v41 = TSVector.zero, v42 = TSVector.zero, v4 = TSVector.zero;
-            TSVector mn;
+		static TSVector temp1, temp2;
+		static TSVector v01, v02, v0;
+		static TSVector v11, v12, v1;
+		static TSVector v21, v22, v2;
+		static TSVector v31, v32, v3;
+		static TSVector v41, v42, v4;
+		static TSVector mn;
 
-            // Initialization of the output
-            point = normal = TSVector.zero;
+		/// <summary>
+		/// Checks two shapes for collisions.
+		/// </summary>
+		/// <param name="support1">The SupportMappable implementation of the first shape to test.</param>
+		/// <param name="support2">The SupportMappable implementation of the seconds shape to test.</param>
+		/// <param name="orientation1">The orientation of the first shape.</param>
+		/// <param name="orientation2">The orientation of the second shape.</param>
+		/// <param name="position1">The position of the first shape.</param>
+		/// <param name="position2">The position of the second shape</param>
+		/// <param name="point">The pointin world coordinates, where collision occur.</param>
+		/// <param name="normal">The normal pointing from body2 to body1.</param>
+		/// <param name="penetration">Estimated penetration depth of the collision.</param>
+		/// <returns>Returns true if there is a collision, false otherwise.</returns>
+		public static bool Detect(ISupportMappable support1, ISupportMappable support2, ref TSMatrix orientation1,
+             ref TSMatrix orientation2, ref TSVector position1, ref TSVector position2,
+			 out TSVector point, out TSVector normal, out FP penetration, bool checkOnly = false)
+        {
+			// Used variables
+			v41 = TSVector.zero; v42 = TSVector.zero; v4 = TSVector.zero;
+			// mn;
+
+			// Initialization of the output
+			point = normal = TSVector.zero;
             penetration = FP.Zero;
 
-            //JVector right = JVector.Right;
+			//JVector right = JVector.Right;
 
-            // Get the center of shape1 in world coordinates -> v01
-            support1.SupportCenter(out v01);
+			// Get the center of shape1 in world coordinates -> v01
+			// 计算 shape1 的中心点, 并转换为世界坐标
+			support1.SupportCenter(out v01);
             TSVector.Transform(ref v01, ref orientation1, out v01);
             TSVector.Add(ref position1, ref v01, out v01);
 
-            // Get the center of shape2 in world coordinates -> v02
-            support2.SupportCenter(out v02);
+			// Get the center of shape2 in world coordinates -> v02
+			// 计算 shape2 的中心点, 并转换为世界坐标
+			support2.SupportCenter(out v02);
             TSVector.Transform(ref v02, ref orientation2, out v02);
             TSVector.Add(ref position2, ref v02, out v02);
 
-            // v0 is the center of the minkowski difference
-            TSVector.Subtract(ref v02, ref v01, out v0);
+			// v0 is the center of the minkowski difference
+			// v0 为闵可夫斯基差异的中心位置
+			TSVector.Subtract(ref v02, ref v01, out v0);
 
-            // Avoid case where centers overlap -- any direction is fine in this case
-            if (v0.IsNearlyZero()) v0 = new TSVector(FP.EN4, 0, 0);
+			// Avoid case where centers overlap -- any direction is fine in this case
+			// 屏蔽中心位置和原点重叠 -- 这种情况下, 任意方向都可以
+			if (v0.IsNearlyZero()) v0 = new TSVector(FP.EN4, 0, 0);
 
             // v1 = support in direction of origin
             mn = v0;
             TSVector.Negate(ref v0, out normal);
 			//UnityEngine.Debug.Log("normal: " + normal);
 
-            SupportMapTransformed(support1, ref orientation1, ref position1, ref mn, out v11);
+			// 计算闵可夫斯基差异中的支撑点 v1
+			SupportMapTransformed(support1, ref orientation1, ref position1, ref mn, out v11);
             SupportMapTransformed(support2, ref orientation2, ref position2, ref normal, out v12);
             TSVector.Subtract(ref v12, ref v11, out v1);
 
@@ -158,15 +193,17 @@ namespace TrueSync.Physics3D {
                 return true;
             }
 
-            TSVector.Negate(ref normal, out mn);
+			// 计算差异支撑点v2
+			TSVector.Negate(ref normal, out mn);
             SupportMapTransformed(support1, ref orientation1, ref position1, ref mn, out v21);
             SupportMapTransformed(support2, ref orientation2, ref position2, ref normal, out v22);
             TSVector.Subtract(ref v22, ref v21, out v2);
 
             if (TSVector.Dot(ref v2, ref normal) <= FP.Zero) return false;
 
-            // Determine whether origin is on + or - side of plane (v1,v0,v2)
-            TSVector.Subtract(ref v1, ref v0, out temp1);
+			// Determine whether origin is on + or - side of plane (v1,v0,v2)
+			// 确定差异原点在入口面哪一侧
+			TSVector.Subtract(ref v1, ref v0, out temp1);
             TSVector.Subtract(ref v2, ref v0, out temp2);
             TSVector.Cross(ref temp1, ref temp2, out normal);
 
@@ -274,6 +311,11 @@ namespace TrueSync.Physics3D {
                     {
                         // HIT!!!
                         hit = true;
+
+						if (checkOnly)
+						{
+							return hit;
+						}
                     }
 
                     // Find the support point in the direction of the wedge face

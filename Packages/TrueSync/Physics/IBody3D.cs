@@ -5,10 +5,20 @@
     **/
     public interface IBody3D : IBody {
 
-        /**
+		bool IsActive
+		{
+			get; set;
+		}
+
+		bool IsEnabled
+		{
+			get; set;
+		}
+
+		/**
         * @brief If true the body doesn't move around by collisions.
         **/
-        bool TSIsStatic {
+		bool TSIsStatic {
             get; set;
         }
 
@@ -47,17 +57,25 @@
             get; set;
         }
 
-        /**
+		void SetTSPosition(ref TSVector pos);
+		ref TSVector ReferTSPosition { get; }
+
+		/**
         * @brief Set/get body's orientation.
         **/
-        TSMatrix TSOrientation {
+		TSMatrix TSOrientation {
             get; set;
         }
 
-        /**
+		TSVector TSScale
+		{
+			get; set;
+		}
+
+		/**
         * @brief If true the body is affected by gravity.
         **/
-        bool TSAffectedByGravity {
+		bool TSAffectedByGravity {
             get; set;
         }
 
@@ -112,6 +130,6 @@
          **/
         void TSApplyRelativeTorque(TSVector force);
 
-    }
+	}
 
 }

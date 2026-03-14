@@ -6,7 +6,7 @@ using Microsoft.Xna.Framework;
 namespace TrueSync.Physics2D
 {
     // Original Code by Steven Lu - see http://www.box2d.org/forum/viewtopic.php?f=3&t=1688
-    // Ported to Farseer 3.0 by Nicolás Hormazábal
+    // Ported to Farseer 3.0 by Nicolï¿½s Hormazï¿½bal
 
     internal struct ShapeData
     {
@@ -243,7 +243,7 @@ namespace TrueSync.Physics2D
                     midpt = (vals[i + 1] + vals[i]);
                 }
 
-                midpt = midpt / 2;
+				midpt = midpt * FP.myhalf;
 
                 TSVector2 p1 = pos;
                 TSVector2 p2 = radius * new TSVector2(FP.Cos(midpt), FP.Sin(midpt)) + pos;

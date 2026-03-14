@@ -29,24 +29,77 @@ namespace TrueSync.Physics3D {
     /// </summary>
     public class CapsuleShape : Shape
     {
-        internal FP length, radius;
 
-        /// <summary>
-        /// Gets or sets the length of the capsule (exclusive the round endcaps).
-        /// </summary>
-        public FP Length { get { return length; } set { length = value; UpdateShape(); } }
+		protected override void setScale(TSVector value)
+		{
+			base.setScale(value);
 
-        /// <summary>
-        /// Gets or sets the radius of the endcaps.
-        /// </summary>
-        public FP Radius { get { return radius; } set { radius = value; UpdateShape(); } }
+			var scaleExpand = TSMath.Max(scale.x, scale.z);
+			_shapeScale.x = scaleExpand;
+			_shapeScale.y = scale.y;
+			_shapeScale.z = scaleExpand;
+		}
 
-        /// <summary>
-        /// Create a new instance of the capsule.
-        /// </summary>
-        /// <param name="length">The length of the capsule (exclusive the round endcaps).</param>
-        /// <param name="radius">The radius of the endcaps.</param>
-        public CapsuleShape(FP length,FP radius)
+		internal FP length, radius;
+
+		/// <summary>
+		/// Gets or sets the length of the capsule (exclusive the round endcaps).
+		/// </summary>
+		public FP Length
+		{
+			get
+			{
+				return length;
+			}
+			set
+			{
+				length = value; UpdateShape();
+			}
+		}
+
+		public FP ScaledLength
+		{
+			get
+			{
+				var scale = GetShapeScale();
+				var scaledLen = length * scale.y;
+				if (scaledLen < 0)
+				{
+					scaledLen = 0;
+				}
+				return scaledLen;
+			}
+		}
+
+		/// <summary>
+		/// Gets or sets the radius of the endcaps.
+		/// </summary>
+		public FP Radius
+		{
+			get
+			{
+				return radius;
+			}
+			set
+			{
+				radius = value; UpdateShape();
+			}
+		}
+
+		public FP ScaledRadius
+		{
+			get
+			{
+				return radius * GetShapeScale().x;
+			}
+		}
+
+		/// <summary>
+		/// Create a new instance of the capsule.
+		/// </summary>
+		/// <param name="length">The length of the capsule (exclusive the round endcaps).</param>
+		/// <param name="radius">The radius of the endcaps.</param>
+		public CapsuleShape(FP length,FP radius)
         {
             this.length = length;
             this.radius = radius;
@@ -58,7 +111,10 @@ namespace TrueSync.Physics3D {
         /// </summary>
         public override void CalculateMassInertia()
         {
-            FP massSphere = ( (3 * FP.One) / (4 * FP.One)) * TSMath.Pi * radius * radius * radius;
+			var length = this.ScaledLength;
+			var radius = this.ScaledRadius;
+
+			FP massSphere = ( (3 * FP.One) / (4 * FP.One)) * TSMath.Pi * radius * radius * radius;
             FP massCylinder = TSMath.Pi * radius * radius * length;
 
             mass = massCylinder + massSphere;
@@ -81,8 +137,11 @@ namespace TrueSync.Physics3D {
         /// <param name="direction">The direction.</param>
         /// <param name="result">The result.</param>
         public override void SupportMapping(ref TSVector direction, out TSVector result)
-        {
-            FP r = FP.Sqrt(direction.x * direction.x + direction.z * direction.z);
+		{
+			var length = this.ScaledLength;
+			var radius = this.ScaledRadius;
+
+			FP r = FP.Sqrt(direction.x * direction.x + direction.z * direction.z);
 
             if (FP.Abs(direction.y) > FP.Zero)
             {

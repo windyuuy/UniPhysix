@@ -241,7 +241,7 @@ namespace TrueSync.Physics3D {
             box.Transform(ref orientation);
         }
 
-        public override void MakeHull(ref List<TSVector> triangleList, int generationThreshold)
+		protected override void MakeHull(ref List<TSVector> triangleList, int generationThreshold)
         {
             for (int index = 0; index < (heightsLength0 - 1) * (heightsLength1 - 1); index++)
             {

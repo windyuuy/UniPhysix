@@ -148,13 +148,13 @@ namespace TrueSync.Physics3D {
             return true;
         }
 
-        public override void MakeHull(ref List<TSVector> triangleList, int generationThreshold)
+		public override void MakeScaledHull(ref List<TSVector> triangleList, int generationThreshold)
         {
             List<TSVector> triangles = new List<TSVector>();
 
             for (int i = 0; i < shapes.Length; i++)
             {
-                shapes[i].Shape.MakeHull(ref triangles, 4);
+				shapes[i].Shape.MakeScaledHull(ref triangles, 4);
                 for (int e = 0; e < triangles.Count; e++)
                 {
                     TSVector pos = triangles[e];

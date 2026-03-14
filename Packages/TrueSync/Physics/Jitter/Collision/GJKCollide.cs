@@ -435,8 +435,8 @@ namespace TrueSync.Physics3D {
             _cachedValidClosest = false;
             _numVertices = 0;
             _needsUpdate = true;
-            _lastW = new TSVector(FP.MaxValue, FP.MaxValue, FP.MaxValue);
-            _cachedBC.Reset();
+			_lastW = TSVector.max;
+			_cachedBC.Reset();
         }
 
         public void AddVertex(TSVector w, TSVector p, TSVector q) {

@@ -54,8 +54,8 @@ namespace TrueSync.Physics2D
 {
     internal static class DTSweep
     {
-        private static readonly FP PI_div2 = FP.Pi / 2;
-        private static readonly FP PI_3div4 = 3 * FP.Pi / 4;
+		private static readonly FP PI_div2 = FP.Pi * FP.myhalf;
+		private static readonly FP PI_3div4 = 3 * FP.Pi * FP.myquat;
 
         /// <summary>
         /// Triangulate simple polygon with holes

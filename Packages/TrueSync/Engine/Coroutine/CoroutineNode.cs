@@ -18,21 +18,29 @@
 /// </summary>
 
 namespace TrueSync {
-	public class CoroutineNode {
-		public CoroutineNode listPrevious = null;
-		public CoroutineNode listNext = null;
+	public class TSCoroutine
+	{
+		public string name = null;
+		public TSCoroutine listPrevious = null;
+		public TSCoroutine listNext = null;
 		public IEnumerator fiber;
 		public bool finished = false;
-		public int waitForFrame = -1;
-		public FP waitForTime = -1.0f;
-		public CoroutineNode waitForCoroutine;
-		public int playerId = -1;
+		public System.Action<TSCoroutine> OnFinished;
+		public TSCoroutine waitForCoroutine;
 
-		public CoroutineNode (IEnumerator _fiber) {
+        //public int waitForFrame = -1;
+        //public FP waitForTime = -1.0f;
+        public int playerId = -1;
+
+		public TSCoroutine(IEnumerator _fiber)
+		{
 			this.fiber = _fiber;
+
+#if OSYNC
 			if (TrueSyncInput.CurrentSimulationData != null) {
 				playerId = TrueSyncInput.CurrentSimulationData.ownerID;
 			}
+#endif
 		}
 
 	}

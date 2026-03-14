@@ -82,13 +82,24 @@ namespace TrueSync
             this.max = max;
         }
 
-        /// <summary>
-        /// Transforms the bounding box into the space given by orientation and position.
-        /// </summary>
-        /// <param name="position"></param>
-        /// <param name="orientation"></param>
-        /// <param name="result"></param>
-        internal void InverseTransform(ref TSVector position, ref TSMatrix orientation)
+		/// <summary>
+		/// Constructor
+		/// </summary>
+		/// <param name="min">The minimum point of the box.</param>
+		/// <param name="max">The maximum point of the box.</param>
+		public TSBBox(ref TSBBox source)
+		{
+			this.min = source.min;
+			this.max = source.max;
+		}
+
+		/// <summary>
+		/// Transforms the bounding box into the space given by orientation and position.
+		/// </summary>
+		/// <param name="position"></param>
+		/// <param name="orientation"></param>
+		/// <param name="result"></param>
+		internal void InverseTransform(ref TSVector position, ref TSMatrix orientation)
         {
             TSVector.Subtract(ref max, ref position, out max);
             TSVector.Subtract(ref min, ref position, out min);
@@ -134,10 +145,11 @@ namespace TrueSync
         private bool Intersect1D(FP start, FP dir, FP min, FP max,
             ref FP enter,ref FP exit)
         {
-            if (dir * dir < TSMath.Epsilon * TSMath.Epsilon) return (start >= min && start <= max);
+			if (dir * dir < TSMath.EpsilonPow2) return (start >= min && start <= max);
 
-            FP t0 = (min - start) / dir;
-            FP t1 = (max - start) / dir;
+			var ddir = 1 / dir;
+			FP t0 = (min - start) * ddir;
+			FP t1 = (max - start) * ddir;
 
             if (t0 > t1) { FP tmp = t0; t0 = t1; t1 = tmp; }
 
@@ -201,13 +213,23 @@ namespace TrueSync
             return this.Contains(ref point);
         }
 
-        /// <summary>
-        /// Checks whether a point is inside, outside or intersecting
-        /// a point.
-        /// </summary>
-        /// <param name="point">A point in space.</param>
-        /// <returns>The ContainmentType of the point.</returns>
-        public ContainmentType Contains(ref TSVector point)
+		/// <summary>
+		/// 检查点是否在包围盒内部(不包含相交情况)
+		/// </summary>
+		/// <param name="point"></param>
+		/// <returns></returns>
+		public bool IsContains(TSVector point)
+		{
+			return this.Contains(ref point) == ContainmentType.Contains;
+		}
+
+		/// <summary>
+		/// Checks whether a point is inside, outside or intersecting
+		/// a point.
+		/// </summary>
+		/// <param name="point">A point in space.</param>
+		/// <returns>The ContainmentType of the point.</returns>
+		public ContainmentType Contains(ref TSVector point)
         {
             return ((((this.min.x <= point.x) && (point.x <= this.max.x)) &&
                 ((this.min.y <= point.y) && (point.y <= this.max.y))) &&
@@ -352,7 +374,13 @@ namespace TrueSync
         public TSVector extents {
             get {
                 return size * FP.Half;
-            }
+			}
+			set
+			{
+				TSVector.Average(ref max, ref min, out var center);
+				TSVector.Add(ref center, ref value, out max);
+				TSVector.Subtract(ref center, ref value, out min);
+			}
         }
 
         internal FP Perimeter
@@ -369,5 +397,14 @@ namespace TrueSync
             return min + "|" + max;
         }
 
-    }
+		/// <summary>
+		/// Convert to UnityEngine.Bounds
+		/// </summary>
+		/// <returns></returns>
+		public UnityEngine.Bounds ToBounds()
+		{
+			return new UnityEngine.Bounds(this.center.ToUEVector(), this.size.ToUEVector());
+		}
+
+	}
 }

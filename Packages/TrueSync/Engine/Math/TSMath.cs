@@ -30,16 +30,19 @@ namespace TrueSync {
         /// </summary>
         public static FP Pi = FP.Pi;
 
-        /**
+		public static FP PI = FP.Pi;
+
+		/**
         *  @brief PI over 2 constant.
         **/
-        public static FP PiOver2 = FP.PiOver2;
+		public static FP PiOver2 = FP.PiOver2;
 
         /// <summary>
         /// A small value often used to decide if numeric 
         /// results are zero.
         /// </summary>
 		public static FP Epsilon = FP.Epsilon;
+		public static FP EpsilonPow2 = FP.Epsilon * FP.Epsilon;
 
         /**
         *  @brief Degree to radians constant.
@@ -104,17 +107,34 @@ namespace TrueSync {
             FP max12 = (val1 > val2) ? val1 : val2;
             return (max12 > val3) ? max12 : val3;
         }
-        #endregion
+		#endregion
 
-        /// <summary>
-        /// Returns a number which is within [min,max]
-        /// </summary>
-        /// <param name="value">The value to clamp.</param>
-        /// <param name="min">The minimum value.</param>
-        /// <param name="max">The maximum value.</param>
-        /// <returns>The clamped value.</returns>
-        #region public static FP Clamp(FP value, FP min, FP max)
-        public static FP Clamp(FP value, FP min, FP max) {
+		/// <summary>
+		/// Gets the maximum number of three values.
+		/// </summary>
+		/// <param name="val1">The first value.</param>
+		/// <param name="val2">The second value.</param>
+		/// <param name="val3">The third value.</param>
+		/// <returns>Returns the largest value.</returns>
+		#region public static FP Max(FP val1, FP val2,FP val3,FP val4)
+		public static FP Max(FP val1, FP val2, FP val3, FP val4)
+		{
+			FP max12 = (val1 > val2) ? val1 : val2;
+			FP max13 = (max12 > val3) ? max12 : val3;
+			return (max13 > val4) ? max13 : val4;
+		}
+		#endregion
+
+		/// <summary>
+		/// Returns a number which is within [min,max]
+		/// </summary>
+		/// <param name="value">The value to clamp.</param>
+		/// <param name="min">The minimum value.</param>
+		/// <param name="max">The maximum value.</param>
+		/// <returns>The clamped value.</returns>
+		#region public static FP Clamp(FP value, FP min, FP max)
+		public static FP Clamp(FP value, FP min, FP max)
+		{
             if (value < min)
             {
                 value = min;
@@ -219,10 +239,18 @@ namespace TrueSync {
             return FP.Floor(value);
         }
 
-        /// <summary>
-        /// Returns the smallest integral value that is greater than or equal to the specified number.
-        /// </summary>
-        public static FP Ceiling(FP value) {
+		/// <summary>
+		/// Returns the largest integer less than or equal to the specified number.
+		/// </summary>
+		public static FP Ceil(FP value)
+		{
+			return FP.Ceiling(value);
+		}
+
+		/// <summary>
+		/// Returns the smallest integral value that is greater than or equal to the specified number.
+		/// </summary>
+		public static FP Ceiling(FP value) {
             return value;
         }
 
@@ -469,30 +497,37 @@ namespace TrueSync {
 
         public static FP MoveTowards(FP current, FP target, FP maxDelta)
         {
-            if (Abs(target - current) <= maxDelta)
-                return target;
-            return (current + (Sign(target - current)) * maxDelta);
-        }
+			if (Abs(target - current) <= maxDelta)
+			    return target;
+			return (current + (Sign(target - current)) * maxDelta);
+			// return TSMath.Abs(target - current) <= maxDelta ? target : current + TSMath.Sign(target - current) * maxDelta;
+		}
 
         public static FP Repeat(FP t, FP length)
         {
-            return (t - (Floor(t / length) * length));
-        }
+			// return (t - (Floor(t / length) * length));
+			return Clamp(t - Floor(t / length) * length, FP.Zero, length);
+		}
 
         public static FP DeltaAngle(FP current, FP target)
         {
-            FP num = Repeat(target - current, (FP)360f);
-            if (num > (FP)180f)
-            {
-                num -= (FP)360f;
-            }
-            return num;
+			FP num = Repeat(target - current, (FP)360f);
+			if (num > (FP)180.0f)
+			{
+				num -= (FP)360f;
+			}
+			return num;
         }
 
-        public static FP MoveTowardsAngle(FP current, FP target, float maxDelta)
-        {
-            target = current + DeltaAngle(current, target);
-            return MoveTowards(current, target, maxDelta);
+		public static FP MoveTowardsAngle(FP current, FP target, FP maxDelta)
+		{
+			FP num = TSMath.DeltaAngle(current, target);
+			if (-maxDelta < num && num < maxDelta)
+			{
+				return target;
+			}
+			target = current + num;
+			return TSMath.MoveTowards(current, target, maxDelta);
         }
 
         public static FP SmoothDamp(FP current, FP target, ref FP currentVelocity, FP smoothTime, FP maxSpeed)
@@ -529,5 +564,17 @@ namespace TrueSync {
             }
             return num8;
         }
-    }
+
+		#region myext
+		public static int FloorToInt(FP value)
+		{
+			return Floor(value).AsInt();
+		}
+
+		public static int CeilToInt(FP value)
+		{
+			return Ceil(value).AsInt();
+		}
+		#endregion
+	}
 }

@@ -721,10 +721,21 @@ namespace TrueSync.Physics3D {
         {
             get { return box; }
         }
+		public ref TSBBox CachedBoundingBox { get { return ref box; } }
 
         public int BroadphaseTag { get; set; }
 
         public object Tag { get; set; }
+
+        public bool IsActive
+        {
+            get { return !active; }
+        }
+
+        public bool IsStatic
+        {
+            get { return !active; }
+        }
 
         public bool IsStaticOrInactive
         {
@@ -736,6 +747,7 @@ namespace TrueSync.Physics3D {
                 return !active;
             }
         }
+
     }
 
 

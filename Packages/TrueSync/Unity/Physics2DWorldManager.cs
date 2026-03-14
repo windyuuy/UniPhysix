@@ -190,6 +190,7 @@ namespace TrueSync {
             b2.SendMessage(callbackName, GetCollisionInfo(body2, body1, contact), SendMessageOptions.DontRequireReceiver);
 
 			TrueSyncManager.UpdateCoroutines ();
+			TSPhysics.syncDirtyDelayedTransform();
         }
 
         private TSCollision2D GetCollisionInfo(Physics2D.Body body1, Physics2D.Body body2, TrueSync.Physics2D.Contact c) {

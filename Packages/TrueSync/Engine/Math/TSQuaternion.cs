@@ -59,7 +59,15 @@ namespace TrueSync
             this.w = w;
         }
 
-        public void Set(FP new_x, FP new_y, FP new_z, FP new_w) {
+		public TSQuaternion(TSQuaternion q)
+		{
+			this.x = q.x;
+			this.y = q.y;
+			this.z = q.z;
+			this.w = q.w;
+		}
+
+		public void Set(FP new_x, FP new_y, FP new_z, FP new_w) {
             this.x = new_x;
             this.y = new_y;
             this.z = new_z;
@@ -71,31 +79,106 @@ namespace TrueSync
             this.Set(targetRotation.x, targetRotation.y, targetRotation.z, targetRotation.w);
         }
 
-        public TSVector eulerAngles {
-            get {
-                TSVector result = new TSVector();
+		// y,x,z
+		public static void CreateFromYawPitchRoll(FP xx, FP yy, FP zz, out TSQuaternion result)
+		{
+			xx *= 0.5f;
+			yy *= 0.5f;
+			zz *= 0.5f;
 
-                FP ysqr = y * y;
-                FP t0 = -2.0f * (ysqr + z * z) + 1.0f;
-                FP t1 = +2.0f * (x * y - w * z);
-                FP t2 = -2.0f * (x * z + w * y);
-                FP t3 = +2.0f * (y * z - w * x);
-                FP t4 = -2.0f * (x * x + ysqr) + 1.0f;
+			var sx = FP.Sin(xx);
+			var cx = FP.Cos(xx);
+			var sy = FP.Sin(yy);
+			var cy = FP.Cos(yy);
+			var sz = FP.Sin(zz);
+			var cz = FP.Cos(zz);
 
-                t2 = t2 > 1.0f ? 1.0f : t2;
-                t2 = t2 < -1.0f ? -1.0f : t2;
+			result.x = sx * cy * cz + cx * sy * sz;
+			result.y = cx * sy * cz - sx * cy * sz;
+			result.z = cx * cy * sz - sx * sy * cz;
+			result.w = cx * cy * cz + sx * sy * sz;
+		}
 
-                result.x = FP.Atan2(t3, t4) * FP.Rad2Deg;
-                result.y = FP.Asin(t2) * FP.Rad2Deg;
-                result.z = FP.Atan2(t1, t0) * FP.Rad2Deg;
+		FP toDegree(FP a)
+		{
+			return a * FP.Rad2Deg;
+		}
 
-                return result * -1;
+		TSVector toEuler(bool outerZ = false)
+		{
+            TSVector result = new TSVector();
+
+			var sqx = x * x;
+
+			// x: Pitch
+			// y: Roll
+			// z: Yaw
+
+			var t0 = -2.0f * (sqx + y * y) + 1.0f;
+			var t1 = +2.0f * (w * y + x * z);
+			var t2 = 2.0f * (x * w - y * z);
+			var t3 = +2.0f * (w * z + x * y);
+			var t4 = -2.0f * (sqx + z * z) + 1.0f;
+
+			t2 = t2 > 1.0f ? 1.0f : t2;
+			t2 = t2 < -1.0f ? -1.0f : t2;
+
+			var Ez = FP.Atan2(t3, t4) * FP.Rad2Deg;
+			var Ex = FP.Asin(t2) * FP.Rad2Deg;
+			var Ey = FP.Atan2(t1, t0) * FP.Rad2Deg;
+
+			if (Ez < 0)
+            {
+				Ez += 360;
             }
-        }
+			if (Ex < 0)
+            {
+				Ex += 360;
+            }
+			if (Ey < 0)
+            {
+				Ey += 360;
+            }
 
-        public static FP Angle(TSQuaternion a, TSQuaternion b) {
+			result.x = Ex;
+			result.y = Ey;
+			result.z = Ez;
+
+            return result;
+
+		}
+
+		public TSVector eulerAngles
+		{
+			get
+			{
+				return toEuler();
+			}
+			set
+			{
+				var result = Euler(value);
+				this.x = result.x;
+				this.y = result.y;
+				this.z = result.z;
+				this.w = result.w;
+            }
+		}
+
+		public TSQuaternion Inverse()
+		{
+			return Inverse(this);
+		}
+
+		/// <summary>
+		/// 求 delta: a -> b;
+		/// 求夹角, 其中 b=delta*a, a 为初始角度, b为最终角度, delta为偏角.
+		/// </summary>
+		/// <param name="a"></param>
+		/// <param name="b"></param>
+		/// <returns></returns>
+		public static FP Angle(TSQuaternion a, TSQuaternion b) {
             TSQuaternion aInv = TSQuaternion.Inverse(a);
-            TSQuaternion f = b * aInv;
+			TSQuaternion f = aInv * b;
 
             FP angle = FP.Acos(f.w) * 2 * FP.Rad2Deg;
 
@@ -106,14 +189,34 @@ namespace TrueSync
             return angle;
         }
 
-        /// <summary>
-        /// Quaternions are added.
-        /// </summary>
-        /// <param name="quaternion1">The first quaternion.</param>
-        /// <param name="quaternion2">The second quaternion.</param>
-        /// <returns>The sum of both quaternions.</returns>
-        #region public static JQuaternion Add(JQuaternion quaternion1, JQuaternion quaternion2)
-        public static TSQuaternion Add(TSQuaternion quaternion1, TSQuaternion quaternion2)
+		/// <summary>
+		/// 求 delta: start -> end;
+		/// 求夹角, 其中 end=delta*start, start 为初始角度, end为最终角度, delta为偏角.
+		/// </summary>
+		/// <param name="start"></param>
+		/// <param name="end"></param>
+		/// <returns></returns>
+		public static TSQuaternion Delta(TSQuaternion start, TSQuaternion end)
+		{
+			TSQuaternion aInv = TSQuaternion.Inverse(start);
+			TSQuaternion f = aInv * end;
+			return f;
+		}
+
+		public static void Divide(ref TSQuaternion end, ref TSQuaternion start, out TSQuaternion result)
+		{
+			TSQuaternion.Inverse(ref start, out result);
+			TSQuaternion.Multiply(ref result, ref end, out result);
+		}
+
+		/// <summary>
+		/// Quaternions are added.
+		/// </summary>
+		/// <param name="quaternion1">The first quaternion.</param>
+		/// <param name="quaternion2">The second quaternion.</param>
+		/// <returns>The sum of both quaternions.</returns>
+		#region public static JQuaternion Add(JQuaternion quaternion1, JQuaternion quaternion2)
+		public static TSQuaternion Add(TSQuaternion quaternion1, TSQuaternion quaternion2)
         {
             TSQuaternion result;
             TSQuaternion.Add(ref quaternion1, ref quaternion2, out result);
@@ -171,7 +274,7 @@ namespace TrueSync
             z *= FP.Deg2Rad;
 
             TSQuaternion rotation;
-            TSQuaternion.CreateFromYawPitchRoll(y, x, z, out rotation);
+			TSQuaternion.CreateFromYawPitchRoll(x, y, z, out rotation);
 
             return rotation;
         }
@@ -197,30 +300,14 @@ namespace TrueSync
             return rotation;
         }
 
-        public static void CreateFromYawPitchRoll(FP yaw, FP pitch, FP roll, out TSQuaternion result)
-        {
-            FP num9 = roll * FP.Half;
-            FP num6 = FP.Sin(num9);
-            FP num5 = FP.Cos(num9);
-            FP num8 = pitch * FP.Half;
-            FP num4 = FP.Sin(num8);
-            FP num3 = FP.Cos(num8);
-            FP num7 = yaw * FP.Half;
-            FP num2 = FP.Sin(num7);
-            FP num = FP.Cos(num7);
-            result.x = ((num * num4) * num5) + ((num2 * num3) * num6);
-            result.y = ((num2 * num3) * num5) - ((num * num4) * num6);
-            result.z = ((num * num3) * num6) - ((num2 * num4) * num5);
-            result.w = ((num * num3) * num5) + ((num2 * num4) * num6);
-        }
 
-        /// <summary>
-        /// Quaternions are added.
-        /// </summary>
-        /// <param name="quaternion1">The first quaternion.</param>
-        /// <param name="quaternion2">The second quaternion.</param>
-        /// <param name="result">The sum of both quaternions.</param>
-        public static void Add(ref TSQuaternion quaternion1, ref TSQuaternion quaternion2, out TSQuaternion result)
+		/// <summary>
+		/// Quaternions are added.
+		/// </summary>
+		/// <param name="quaternion1">The first quaternion.</param>
+		/// <param name="quaternion2">The second quaternion.</param>
+		/// <param name="result">The sum of both quaternions.</param>
+		public static void Add(ref TSQuaternion quaternion1, ref TSQuaternion quaternion2, out TSQuaternion result)
         {
             result.x = quaternion1.x + quaternion2.x;
             result.y = quaternion1.y + quaternion2.y;
@@ -239,16 +326,47 @@ namespace TrueSync
             return quaternion;
         }
 
-        public static FP Dot(TSQuaternion a, TSQuaternion b) {
+		public static void Conjugate(ref TSQuaternion value, out TSQuaternion quaternion)
+		{
+			quaternion.x = -value.x;
+			quaternion.y = -value.y;
+			quaternion.z = -value.z;
+			quaternion.w = value.w;
+		}
+
+		public static FP Dot(TSQuaternion a, TSQuaternion b)
+		{
             return a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z;
         }
 
-        public static TSQuaternion Inverse(TSQuaternion rotation) {
+		/// <summary>
+		/// q^-1 =q*/|q|2
+		/// </summary>
+		/// <param name="rotation"></param>
+		/// <returns></returns>
+		public static TSQuaternion Inverse(TSQuaternion rotation) {
             FP invNorm = FP.One / ((rotation.x * rotation.x) + (rotation.y * rotation.y) + (rotation.z * rotation.z) + (rotation.w * rotation.w));
             return TSQuaternion.Multiply(TSQuaternion.Conjugate(rotation), invNorm);
         }
 
-        public static TSQuaternion FromToRotation(TSVector fromVector, TSVector toVector) {
+		public static void Inverse(ref TSQuaternion rotation, out TSQuaternion result)
+		{
+			FP invNorm = FP.One / ((rotation.x * rotation.x) + (rotation.y * rotation.y) + (rotation.z * rotation.z) + (rotation.w * rotation.w));
+			TSQuaternion.Conjugate(ref rotation, out result);
+			TSQuaternion.Multiply(ref result, invNorm, out result);
+		}
+
+		/// <summary>
+		/// q^-1 = q* =(-x, -y, -z, w)
+		/// </summary>
+		/// <param name="rotation"></param>
+		/// <returns></returns>
+		public static TSQuaternion InverseOrientation(TSQuaternion rotation)
+		{
+			return TSQuaternion.Conjugate(rotation);
+		}
+
+		public static TSQuaternion FromToRotation(TSVector fromVector, TSVector toVector) {
             TSVector w = TSVector.Cross(fromVector, toVector);
             TSQuaternion q = new TSQuaternion(w.x, w.y, w.z, TSVector.Dot(fromVector, toVector));
             q.w += FP.Sqrt(fromVector.sqrMagnitude * toVector.sqrMagnitude);
@@ -367,30 +485,65 @@ namespace TrueSync
             result.z = quaternion1.z * scaleFactor;
             result.w = quaternion1.w * scaleFactor;
         }
-        #endregion
+		#endregion
 
-        /// <summary>
-        /// Sets the length of the quaternion to one.
-        /// </summary>
-        #region public void Normalize()
-        public void Normalize()
+		/// <summary>
+		/// Sets the length of the quaternion to one.
+		/// </summary>
+		#region public void Normalize()
+		public void Normalize()
         {
             FP num2 = (((this.x * this.x) + (this.y * this.y)) + (this.z * this.z)) + (this.w * this.w);
             FP num = 1 / (FP.Sqrt(num2));
             this.x *= num;
             this.y *= num;
             this.z *= num;
-            this.w *= num;
+			this.w *= num;
         }
-        #endregion
+		#endregion
 
-        /// <summary>
-        /// Creates a quaternion from a matrix.
-        /// </summary>
-        /// <param name="matrix">A matrix representing an orientation.</param>
-        /// <returns>JQuaternion representing an orientation.</returns>
-        #region public static JQuaternion CreateFromMatrix(JMatrix matrix)
-        public static TSQuaternion CreateFromMatrix(TSMatrix matrix)
+		public TSQuaternion normalized
+		{
+			get
+			{
+				var copy = new TSQuaternion(this);
+				copy.Normalize();
+				return copy;
+			}
+		}
+
+		/// <summary>
+		/// Gets the squared length of the vector.
+		/// </summary>
+		/// <returns>Returns the squared length of the vector.</returns>
+		public FP sqrMagnitude
+		{
+			get
+			{
+				return (((this.x * this.x) + (this.y * this.y)) + (this.z * this.z) + (this.w * this.w));
+			}
+		}
+
+		/// <summary>
+		/// Gets the length of the vector.
+		/// </summary>
+		/// <returns>Returns the length of the vector.</returns>
+		public FP magnitude
+		{
+			get
+			{
+				FP num = ((this.x * this.x) + (this.y * this.y)) + (this.z * this.z) + (this.w * this.w);
+				return FP.Sqrt(num);
+			}
+		}
+
+		/// <summary>
+		/// Creates a quaternion from a matrix.
+		/// </summary>
+		/// <param name="matrix">A matrix representing an orientation.</param>
+		/// <returns>JQuaternion representing an orientation.</returns>
+		#region public static JQuaternion CreateFromMatrix(JMatrix matrix)
+		public static TSQuaternion CreateFromMatrix(TSMatrix matrix)
         {
             TSQuaternion result;
             TSQuaternion.CreateFromMatrix(ref matrix, out result);
@@ -457,16 +610,29 @@ namespace TrueSync
             TSQuaternion.Multiply(ref value1, ref value2,out result);
             return result;
         }
-        #endregion
+		#endregion
 
-        /// <summary>
-        /// Add two quaternions.
-        /// </summary>
-        /// <param name="value1">The first quaternion.</param>
-        /// <param name="value2">The second quaternion.</param>
-        /// <returns>The sum of both quaternions.</returns>
-        #region public static FP operator +(JQuaternion value1, JQuaternion value2)
-        public static TSQuaternion operator +(TSQuaternion value1, TSQuaternion value2)
+		/// <summary>
+		/// Multiply two quaternions.
+		/// </summary>
+		/// <param name="value1">The first quaternion.</param>
+		/// <param name="value2">The second quaternion.</param>
+		/// <returns>The product of both quaternions.</returns>
+		#region public static FP operator /(JQuaternion value1, JQuaternion value2)
+		public static TSQuaternion operator /(TSQuaternion end, TSQuaternion start)
+		{
+			return TSQuaternion.Delta(start, end);
+		}
+		#endregion
+
+		/// <summary>
+		/// Add two quaternions.
+		/// </summary>
+		/// <param name="value1">The first quaternion.</param>
+		/// <param name="value2">The second quaternion.</param>
+		/// <returns>The sum of both quaternions.</returns>
+		#region public static FP operator +(JQuaternion value1, JQuaternion value2)
+		public static TSQuaternion operator +(TSQuaternion value1, TSQuaternion value2)
         {
             TSQuaternion result;
             TSQuaternion.Add(ref value1, ref value2, out result);
@@ -518,5 +684,48 @@ namespace TrueSync
             return string.Format("({0:f1}, {1:f1}, {2:f1}, {3:f1})", x.AsFloat(), y.AsFloat(), z.AsFloat(), w.AsFloat());
         }
 
-    }
+		/// <summary>
+		/// Tests if two TSQuaternion are equal.
+		/// </summary>
+		/// <param name="value1">The first value.</param>
+		/// <param name="value2">The second value.</param>
+		/// <returns>Returns true if both values are equal, otherwise false.</returns>
+		#region public static bool operator ==(TSQuaternion value1, TSQuaternion value2)
+		public static bool operator ==(TSQuaternion value1, TSQuaternion value2)
+		{
+			return (((value1.x == value2.x) && (value1.y == value2.y))
+				&& (value1.z == value2.z) && (value1.w == value2.w));
+		}
+		#endregion
+
+		/// <summary>
+		/// Tests if two TSQuaternion are not equal.
+		/// </summary>
+		/// <param name="value1">The first value.</param>
+		/// <param name="value2">The second value.</param>
+		/// <returns>Returns false if both values are equal, otherwise true.</returns>
+		#region public static bool operator !=(TSQuaternion value1, TSQuaternion value2)
+		public static bool operator !=(TSQuaternion value1, TSQuaternion value2)
+		{
+			// if ((value1.x == value2.x) && (value1.y == value2.y) && (value1.z == value2.z))
+			// {
+			// 	return (value1.w != value2.w);
+			// }
+			// return true;
+			return
+				value1.x != value2.x ||
+				value1.y != value2.y ||
+				value1.z != value2.z ||
+				value1.w != value2.w;
+		}
+		#endregion
+
+		public void Overwrite(ref UnityEngine.Quaternion quat)
+		{
+			quat.x = (float)this.x;
+			quat.y = (float)this.y;
+			quat.z = (float)this.z;
+			quat.w = (float)this.w;
+		}
+	}
 }

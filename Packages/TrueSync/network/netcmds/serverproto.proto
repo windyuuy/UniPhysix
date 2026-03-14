@@ -1,0 +1,67 @@
+syntax = "proto3";
+package RoomProto;
+
+// type int64 int64
+// type string string
+// type int64 int64
+// type string string
+// type string string
+
+//房间id生成规则: id:int64=parseInt64(timestamp+incr(0~99999))
+// type string string
+// type int64 int64
+
+// 移动方向信息
+message TActorMoveInfo {
+  int64 angle = 1;
+  bool is_moving = 2;
+}
+
+message TSkill {
+  // 技能类型, 用于唯一确定角色当前释放那个技能
+  int64 skill_type = 1;
+  int64 fire_angle = 2;
+  int64 fire_angle_len = 3;
+  int64 charge_time = 4;
+}
+
+message TRoleInfo {
+  // 角色id(暂时无用)
+  string role_id = 1;
+  // 角色等级
+  int32 level = 2;
+  // 角色名
+  string name = 3;
+  // 角色配表id
+  int32 role_config_id = 4;
+  // 是否准备就绪
+  bool is_ready = 5;
+  // 选择的召唤师技能
+  int32 common_skill_id = 6;
+}
+
+// RPG控制命令信息
+message TRPGPlayerCmd {
+  // 角色id
+  string actor_id = 1;
+  // 命令唯一Id
+  int32 cmd_id = 2;
+  // 命令创建时间
+  int64 create_time = 3;
+  // 命令创建所在帧
+  int32 create_frame_count = 4;
+  // 命令实际需要在那一帧执行
+  int32 frame_count = 5;
+  // 命令序号
+  int32 cmd_index = 6;
+  // 释放及的技能列表
+  repeated TSkill skills = 7;
+  // 角色移动信息
+  TActorMoveInfo move = 8;
+  // 玩家id
+  string player_id = 9;
+  // 角色信息
+  TRoleInfo role_info = 10;
+  // 命令类型
+  int32 cmd_type=11;
+}

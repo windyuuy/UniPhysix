@@ -23,17 +23,43 @@ using System.Collections.Generic;
 using System.Diagnostics;
 #endregion
 
+#if UNITY_5_5_OR_NEWER
+using UnityEngine.Profiling;
+#endif
+
 namespace TrueSync.Physics3D {
 
-    /// <summary>
-    /// Entity of the Broadphase system. (Either a Softbody or a RigidBody)
-    /// </summary>
-    public interface IBroadphaseEntity
+	//
+	// 摘要:
+	//     Overrides the global Physics.queriesHitTriggers.
+	public enum QueryTriggerInteraction
+	{
+		//
+		// 摘要:
+		//     Queries use the global Physics.queriesHitTriggers setting.
+		UseGlobal = 0,
+		//
+		// 摘要:
+		//     Queries never report Trigger hits.
+		Ignore = 1,
+		//
+		// 摘要:
+		//     Queries always report Trigger hits.
+		Collide = 2
+	}
+
+	/// <summary>
+	/// Entity of the Broadphase system. (Either a Softbody or a RigidBody)
+	/// </summary>
+	public interface IBroadphaseEntity
     {
         TSBBox BoundingBox { get; }
+		ref TSBBox CachedBoundingBox { get; }
         bool IsStaticOrInactive{ get; }
 
         bool IsStaticNonKinematic { get; }
+        bool IsStatic { get; }
+        bool IsActive { get; }
     }
 
 
@@ -81,11 +107,11 @@ namespace TrueSync.Physics3D {
     /// <returns>If false is returned the collision information is dropped.</returns>
     public delegate bool RaycastCallback(RigidBody body,TSVector normal, FP fraction);
 
-    /// <summary>
-    /// CollisionSystem. Used by the world class to detect all collisions. 
-    /// Can be used seperatly from the physics.
-    /// </summary>
-    public abstract class CollisionSystem
+	/// <summary>
+	/// CollisionSystem. Used by the world class to detect all collisions. 
+	/// Can be used seperatly from the physics.
+	/// </summary>
+	public abstract partial class CollisionSystem
     {
 
         /// <summary>
@@ -136,10 +162,15 @@ namespace TrueSync.Physics3D {
 
         private CollisionDetectedHandler collisionDetected;
 
-        /// <summary>
-        /// Gets called when broad- and narrow phase collision were positive.
-        /// </summary>
-        public event CollisionDetectedHandler CollisionDetected {
+		/// <summary>
+		/// 仅仅检测的时候触发
+		/// </summary>
+		protected CollisionDetectedHandler checkCollisionDetected;
+
+		/// <summary>
+		/// Gets called when broad- and narrow phase collision were positive.
+		/// </summary>
+		public event CollisionDetectedHandler CollisionDetected {
             add {
                 collisionDetected += value;
             }
@@ -177,30 +208,34 @@ namespace TrueSync.Physics3D {
         /// </summary>
         public bool UseTerrainNormal { get { return useTerrainNormal; } set { useTerrainNormal = value; } }
 
-        /// <summary>
-        /// Checks two bodies for collisions using narrowphase.
-        /// </summary>
-        /// <param name="body1">The first body.</param>
-        /// <param name="body2">The second body.</param>
-        #region public virtual void Detect(IBroadphaseEntity body1, IBroadphaseEntity body2)
-        public virtual void Detect(IBroadphaseEntity entity1, IBroadphaseEntity entity2)
-        {
-            //Debug.Assert(entity1 != entity2, "CollisionSystem reports selfcollision. Something is wrong.");
+		/// <summary>
+		/// Checks two bodies for collisions using narrowphase.
+		/// </summary>
+		/// <param name="body1">The first body.</param>
+		/// <param name="body2">The second body.</param>
+		#region public virtual void Detect(IBroadphaseEntity body1, IBroadphaseEntity body2)
+		public virtual bool Detect(IBroadphaseEntity entity1, IBroadphaseEntity entity2, QueryTriggerInteraction queryTriggerInteraction = QueryTriggerInteraction.Collide, bool checkOnly = false)
+		{
+			bool isCollision = false;
 
-            RigidBody rigidBody1 = entity1 as RigidBody;
+			//Debug.Assert(entity1 != entity2, "CollisionSystem reports selfcollision. Something is wrong.");
+
+			RigidBody rigidBody1 = entity1 as RigidBody;
             RigidBody rigidBody2 = entity2 as RigidBody;
 
             if (rigidBody1 != null)
             { 
                 if(rigidBody2 != null)
                 {
-                    // most common
-                    DetectRigidRigid(rigidBody1, rigidBody2);
+					Profiler.BeginSample("DetectRigidRigid");
+					// most common
+					isCollision = DetectRigidRigid(rigidBody1, rigidBody2, queryTriggerInteraction, checkOnly);
+					Profiler.EndSample();
                 }
                 else
                 {
                     SoftBody softBody2 = entity2 as SoftBody;
-                    if(softBody2 != null) DetectSoftRigid(rigidBody1,softBody2);
+					if (softBody2 != null) isCollision = DetectSoftRigid(rigidBody1, softBody2, queryTriggerInteraction);
                 }
             }
             else
@@ -209,22 +244,26 @@ namespace TrueSync.Physics3D {
 
                 if(rigidBody2 != null)
                 {
-                    if(softBody1 != null) DetectSoftRigid(rigidBody2,softBody1);
+					if (softBody1 != null) isCollision = DetectSoftRigid(rigidBody2, softBody1, queryTriggerInteraction);
                 }
                 else
                 {
                     // less common
                     SoftBody softBody2 = entity2 as SoftBody;
-                    if(softBody1 != null && softBody2 != null) DetectSoftSoft(softBody1,softBody2);
+					if (softBody1 != null && softBody2 != null) isCollision = DetectSoftSoft(softBody1, softBody2, queryTriggerInteraction);
                 }
             }
+
+			return isCollision;
         }
 
         private ResourcePool<List<int>> potentialTriangleLists = new ResourcePool<List<int>>();
 
-        private void DetectSoftSoft(SoftBody body1, SoftBody body2)
+		private bool DetectSoftSoft(SoftBody body1, SoftBody body2, QueryTriggerInteraction queryTriggerInteraction)
         {
-            List<int> my = potentialTriangleLists.GetNew();
+			bool isCollision = false;
+
+			List<int> my = potentialTriangleLists.GetNew();
             List<int> other = potentialTriangleLists.GetNew();
 
             body1.dynamicTree.Query(other, my, body2.dynamicTree);
@@ -247,19 +286,24 @@ namespace TrueSync.Physics3D {
                     int minIndexOther = FindNearestTrianglePoint(body2, other[i], ref point);
 
 
+					isCollision = true;
                     RaiseCollisionDetected(body1.VertexBodies[minIndexMy],
-                        body2.VertexBodies[minIndexOther], ref point, ref point, ref normal, penetration);
+						body2.VertexBodies[minIndexOther], ref point, ref point, ref normal, penetration, queryTriggerInteraction);
                 }
             }
 
             my.Clear(); other.Clear();
             potentialTriangleLists.GiveBack(my);
             potentialTriangleLists.GiveBack(other);
+
+			return isCollision;
         }
 
-        private void DetectRigidRigid(RigidBody body1, RigidBody body2)
+		private bool DetectRigidRigid(RigidBody body1, RigidBody body2, QueryTriggerInteraction queryTriggerInteraction, bool checkOnly = false)
         {
-            bool b1IsMulti = (body1.Shape is Multishape);
+			bool isCollision = false;
+
+			bool b1IsMulti = (body1.Shape is Multishape);
             bool b2IsMulti = (body2.Shape is Multishape);
 
             bool speculative = speculativeContacts ||
@@ -270,15 +314,41 @@ namespace TrueSync.Physics3D {
 
             if (!b1IsMulti && !b2IsMulti)
             {
+				if (body1.Shape is BoxShape)
+				{
+					if (body2.Shape is BoxShape)
+					{
+						Profiler.BeginSample("DetectBoxBox");
+						var b = DetectBoxBox(body1, body2, queryTriggerInteraction, checkOnly);
+						Profiler.EndSample();
+						return b;
+					}
+					else if (body2.Shape is SphereShape)
+					{
+						Profiler.BeginSample("DetectBoxSphere");
+						var b = DetectBoxSphere(body1, body2, queryTriggerInteraction, checkOnly);
+						Profiler.EndSample();
+						return b;
+					}
+				}
+				else if (body1.Shape is SphereShape && body2.Shape is BoxShape)
+				{
+					Profiler.BeginSample("DetectSphereBox");
+					var b = DetectBoxSphere(body2, body1, queryTriggerInteraction, checkOnly);
+					Profiler.EndSample();
+					return b;
+				}
+
                 if (XenoCollide.Detect(body1.Shape, body2.Shape, ref body1.orientation,
                     ref body2.orientation, ref body1.position, ref body2.position,
-                    out point, out normal, out penetration))
+					out point, out normal, out penetration, checkOnly))
                 {
                     //normal = JVector.Up;
                     //UnityEngine.Debug.Log("FINAL  --- >>> normal: " + normal);
                     TSVector point1, point2;
                     FindSupportPoints(body1, body2, body1.Shape, body2.Shape, ref point, ref normal, out point1, out point2);
-                    RaiseCollisionDetected(body1, body2, ref point1, ref point2, ref normal, penetration);
+					isCollision = true;
+					RaiseCollisionDetected(body1, body2, ref point1, ref point2, ref normal, penetration, queryTriggerInteraction);
                 }
                 else if (speculative)
                 {
@@ -295,7 +365,8 @@ namespace TrueSync.Physics3D {
 
                             if (penetration < FP.Zero)
                             {
-                                RaiseCollisionDetected(body1, body2, ref hit1, ref hit2, ref normal, penetration);
+								isCollision = true;
+								RaiseCollisionDetected(body1, body2, ref hit1, ref hit2, ref normal, penetration, queryTriggerInteraction);
                             }
 
                         }
@@ -327,7 +398,7 @@ namespace TrueSync.Physics3D {
                 {
                     ms1.ReturnWorkingClone();
                     ms2.ReturnWorkingClone();
-                    return;
+					return false;
                 }
 
                 for (int i = 0; i < ms1Length; i++)
@@ -340,11 +411,12 @@ namespace TrueSync.Physics3D {
 
                         if (XenoCollide.Detect(ms1, ms2, ref body1.orientation,
                             ref body2.orientation, ref body1.position, ref body2.position,
-                            out point, out normal, out penetration))
+							out point, out normal, out penetration, checkOnly))
                         {
                             TSVector point1, point2;
                             FindSupportPoints(body1, body2, ms1, ms2, ref point, ref normal, out point1, out point2);
-                            RaiseCollisionDetected(body1, body2, ref point1, ref point2, ref normal, penetration);
+							isCollision = true;
+							RaiseCollisionDetected(body1, body2, ref point1, ref point2, ref normal, penetration, queryTriggerInteraction);
                         }
                         else if (speculative)
                         {
@@ -361,7 +433,8 @@ namespace TrueSync.Physics3D {
 
                                     if (penetration < FP.Zero)
                                     {
-                                        RaiseCollisionDetected(body1, body2, ref hit1, ref hit2, ref normal, penetration);
+										isCollision = true;
+										RaiseCollisionDetected(body1, body2, ref hit1, ref hit2, ref normal, penetration, queryTriggerInteraction);
                                     }
                                 }
                             }
@@ -384,7 +457,16 @@ namespace TrueSync.Physics3D {
 
                 Multishape ms = (b1.Shape as Multishape);
 
-                ms = ms.RequestWorkingClone();
+				// if (b2.Shape is CapsuleShape && ms is TriangleMeshShape)
+				// {
+				// 	return DetectCapsuleMesh(b2, b1, queryTriggerInteraction, checkOnly);
+				// }
+				// if (b2.Shape is SphereShape && ms is TriangleMeshShape)
+				// {
+				// 	return DetectSphereMesh(b2, b1, queryTriggerInteraction, checkOnly);
+				// }
+
+				ms = ms.RequestWorkingClone();
 
                 TSBBox transformedBoundingBox = b2.boundingBox;
                 transformedBoundingBox.InverseTransform(ref b1.position, ref b1.orientation);
@@ -394,17 +476,27 @@ namespace TrueSync.Physics3D {
                 if (msLength == 0)
                 {
                     ms.ReturnWorkingClone();
-                    return;
+					return false;
                 }
 
+				Profiler.BeginSample("checkM1");
                 for (int i = 0; i < msLength; i++)
                 {
                     ms.SetCurrentShape(i);
 
-                    if (XenoCollide.Detect(ms, b2.Shape, ref b1.orientation,
-                        ref b2.orientation, ref b1.position, ref b2.position,
-                        out point, out normal, out penetration))
+					Profiler.BeginSample("checkM1_XenoCollideDetect");
+					var xx = XenoCollide.Detect(ms, b2.Shape, ref b1.orientation,
+						ref b2.orientation, ref b1.position, ref b2.position,
+						out point, out normal, out penetration, checkOnly);
+					Profiler.EndSample();
+					if (xx)
                     {
+						if (checkOnly)
+						{
+							ms.ReturnWorkingClone();
+							isCollision = true;
+							return isCollision;
+						}
                         TSVector point1, point2;
                         FindSupportPoints(b1, b2, ms, b2.Shape, ref point, ref normal, out point1, out point2);
 
@@ -419,7 +511,8 @@ namespace TrueSync.Physics3D {
                             TSVector.Transform(ref normal, ref b1.orientation, out normal);
                         }
 
-                        RaiseCollisionDetected(b1, b2, ref point1, ref point2, ref normal, penetration);
+						isCollision = true;
+						RaiseCollisionDetected(b1, b2, ref point1, ref point2, ref normal, penetration, queryTriggerInteraction);
                     }
                     else if (speculative)
                     {
@@ -436,20 +529,26 @@ namespace TrueSync.Physics3D {
 
                                 if (penetration < FP.Zero)
                                 {
-                                    RaiseCollisionDetected(b1, b2, ref hit1, ref hit2, ref normal, penetration);
+									isCollision = true;
+									RaiseCollisionDetected(b1, b2, ref hit1, ref hit2, ref normal, penetration, queryTriggerInteraction);
                                 }
                             }
                         }
                     }
                 }
+				Profiler.EndSample();
 
                 ms.ReturnWorkingClone();
             }
+
+			return isCollision;
         }
 
-        private void DetectSoftRigid(RigidBody rigidBody, SoftBody softBody)
+		private bool DetectSoftRigid(RigidBody rigidBody, SoftBody softBody, QueryTriggerInteraction queryTriggerInteraction)
         {
-            if (rigidBody.Shape is Multishape)
+			bool isCollision = false;
+
+			if (rigidBody.Shape is Multishape)
             {
                 Multishape ms = (rigidBody.Shape as Multishape);
                 ms = ms.RequestWorkingClone();
@@ -481,8 +580,9 @@ namespace TrueSync.Physics3D {
                         {
                             int minIndex = FindNearestTrianglePoint(softBody, i, ref point);
 
+							isCollision = true;
                             RaiseCollisionDetected(rigidBody,
-                                softBody.VertexBodies[minIndex], ref point, ref point, ref normal, penetration);
+								softBody.VertexBodies[minIndex], ref point, ref point, ref normal, penetration, queryTriggerInteraction);
                         }
                     }
 
@@ -511,14 +611,17 @@ namespace TrueSync.Physics3D {
                     {
                         int minIndex = FindNearestTrianglePoint(softBody, i, ref point);
 
+						isCollision = true;
                         RaiseCollisionDetected(rigidBody,
-                            softBody.VertexBodies[minIndex], ref point, ref point, ref normal, penetration);
+							softBody.VertexBodies[minIndex], ref point, ref point, ref normal, penetration, queryTriggerInteraction);
                     }
                 }
 
                 detected.Clear();
                 potentialTriangleLists.GiveBack(detected);
             }
+
+			return isCollision;
         }
 
         public static int FindNearestTrianglePoint(SoftBody sb, int id, ref TSVector point)
@@ -584,33 +687,72 @@ namespace TrueSync.Physics3D {
             TSVector.Add(ref result, ref body.position, out result);
         }
 
-        #endregion
+		#endregion
 
-        /// <summary>
-        /// Sends a ray (definied by start and direction) through the scene (all bodies added).
-        /// NOTE: For performance reasons terrain and trianglemeshshape aren't checked
-        /// against rays (rays are of infinite length). They are checked against segments
-        /// which start at rayOrigin and end in rayOrigin + rayDirection.
-        /// </summary>
-        public abstract bool Raycast(TSVector rayOrigin, TSVector rayDirection, RaycastCallback raycast, out RigidBody body, out TSVector normal, out FP fraction);
+		/// <summary>
+		/// Sends a ray (definied by start and direction) through the scene (all bodies added).
+		/// NOTE: For performance reasons terrain and trianglemeshshape aren't checked
+		/// against rays (rays are of infinite length). They are checked against segments
+		/// which start at rayOrigin and end in rayOrigin + rayDirection.
+		/// </summary>
+		public abstract bool Raycast(ref TSVector rayOrigin, ref TSVector rayDirection, RaycastCallback raycast, out RigidBody body, out TSVector normal, out FP fraction);
 
-        public abstract bool Raycast(TSVector rayOrigin, TSVector rayDirection, RaycastCallback raycast, int layerMask, out RigidBody body, out TSVector normal, out FP fraction);
+		public abstract bool Raycast(ref TSVector rayOrigin, ref TSVector rayDirection, RaycastCallback raycast, int layerMask, out RigidBody body, out TSVector normal, out FP fraction);
 
-        /// <summary>
-        /// Raycasts a single body. NOTE: For performance reasons terrain and trianglemeshshape aren't checked
-        /// against rays (rays are of infinite length). They are checked against segments
-        /// which start at rayOrigin and end in rayOrigin + rayDirection.
-        /// </summary>
-        public abstract bool Raycast(RigidBody body, TSVector rayOrigin, TSVector rayDirection, out TSVector normal, out FP fraction);
+		/// <summary>
+		/// Raycasts a single body. NOTE: For performance reasons terrain and trianglemeshshape aren't checked
+		/// against rays (rays are of infinite length). They are checked against segments
+		/// which start at rayOrigin and end in rayOrigin + rayDirection.
+		/// </summary>
+		public abstract bool Raycast(RigidBody body, ref TSVector rayOrigin, ref TSVector rayDirection, out TSVector normal, out FP fraction);
 
+		/// <summary>
+		/// CheckRigidBody
+		/// </summary>
+		/// <param name="body"></param>
+		/// <param name="layerMask"></param>
+		/// <param name="queryTriggerInteraction"></param>
+		/// <param name="handler"></param>
+		/// <returns></returns>
+		public virtual bool CheckRigidBody(RigidBody body, int layerMask, QueryTriggerInteraction queryTriggerInteraction, CollisionDetectedHandler handler = null)
+		{
+			throw new System.Exception("not implementation");
+		}
 
-        /// <summary>
-        /// Checks the state of two bodies.
-        /// </summary>
-        /// <param name="entity1">The first body.</param>
-        /// <param name="entity2">The second body.</param>
-        /// <returns>Returns true if both are static or inactive.</returns>
-        public bool CheckBothStaticOrInactive(IBroadphaseEntity entity1, IBroadphaseEntity entity2)
+		/// <summary>
+		/// CheckCapsule
+		/// </summary>
+		/// <param name="start"></param>
+		/// <param name="end"></param>
+		/// <param name="radius"></param>
+		/// <param name="layerMask"></param>
+		/// <param name="queryTriggerInteraction"></param>
+		/// <returns></returns>
+		public virtual bool CheckCapsule(ref TSVector start, ref TSVector end, FP radius, int layerMask, QueryTriggerInteraction queryTriggerInteraction, bool useCache = false)
+		{
+			throw new System.Exception("not implementation");
+		}
+
+		/// <summary>
+		/// CheckSphere
+		/// </summary>
+		/// <param name="position"></param>
+		/// <param name="radius"></param>
+		/// <param name="layerMask"></param>
+		/// <param name="queryTriggerInteraction"></param>
+		/// <returns></returns>
+		public virtual bool CheckSphere(ref TSVector position, FP radius, int layerMask, QueryTriggerInteraction queryTriggerInteraction, bool useCache = false)
+		{
+			throw new System.Exception("not implementation");
+		}
+
+		/// <summary>
+		/// Checks the state of two bodies.
+		/// </summary>
+		/// <param name="entity1">The first body.</param>
+		/// <param name="entity2">The second body.</param>
+		/// <returns>Returns true if both are static or inactive.</returns>
+		public bool CheckBothStaticOrInactive(IBroadphaseEntity entity1, IBroadphaseEntity entity2)
         {
             return (entity1.IsStaticOrInactive && entity2.IsStaticOrInactive);
        }
@@ -652,6 +794,7 @@ namespace TrueSync.Physics3D {
             return true;
         }
 
+		public bool queriesHitTriggers = false;
 
         /// <summary>
         /// Raises the CollisionDetected event.
@@ -663,16 +806,67 @@ namespace TrueSync.Physics3D {
         /// <param name="penetration">The penetration depth.</param>
         protected void RaiseCollisionDetected(RigidBody body1, RigidBody body2,
                                             ref TSVector point1, ref TSVector point2,
-                                            ref TSVector normal, FP penetration)
-        {
-            if (this.collisionDetected != null)
-                this.collisionDetected(body1, body2, point1, point2, normal, penetration);
-        }
+											ref TSVector normal, FP penetration, QueryTriggerInteraction queryTriggerInteraction)
+		{
+			/// <summary>
+			/// 碰撞查询是否需要触发碰撞事件
+			/// </summary>
+			var queriesHitTriggers = this.queriesHitTriggers;
+			if (queryTriggerInteraction == QueryTriggerInteraction.Ignore)
+			{
+				queriesHitTriggers = false;
+			}
+			else if (queryTriggerInteraction == QueryTriggerInteraction.Collide)
+			{
+				queriesHitTriggers = true;
+			}
+
+			if (queriesHitTriggers)
+			{
+				if (this.collisionDetected != null)
+					this.collisionDetected(body1, body2, point1, point2, normal, penetration);
+			}
+
+			if (this.checkCollisionDetected != null)
+			{
+				this.checkCollisionDetected(body1, body2, point1, point2, normal, penetration);
+			}
+		}
+
+		/// <summary>
+		/// 是否处于layerMask指定层
+		/// </summary>
+		/// <param name="layerMask"></param>
+		/// <returns></returns>
+		public virtual bool IsOnLayer(IBody b, int layerMask)
+		{
+			if (b == null)
+			{
+				return false;
+			}
+
+			int bodyLayerMask = 1 << PhysicsManager.instance.GetBodyLayer(b);
+			if ((layerMask & bodyLayerMask) != bodyLayerMask)
+			{
+				return false;
+			}
+			else
+			{
+				return true;
+			}
+		}
 
         /// <summary>
         /// Tells the collisionsystem to check all bodies for collisions. Hook into the <see cref="PassedBroadphase"/>
         /// and <see cref="CollisionDetected"/> events to get the results.
         /// </summary>
         public abstract void Detect();
+		/// <summary>
+		/// 清除碰撞缓存
+		/// </summary>
+		public virtual void ClearCollisionCache()
+		{
+
+		}
     }
 }

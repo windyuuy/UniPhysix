@@ -24,10 +24,10 @@ using System.Collections.Generic;
 
 namespace TrueSync.Physics3D {
 
-    /// <summary>
-    /// Uses single axis sweep and prune broadphase collision detection.
-    /// </summary>
-    public class CollisionSystemSAP : CollisionSystem
+	/// <summary>
+	/// Uses single axis sweep and prune broadphase collision detection.
+	/// </summary>
+	public class CollisionSystemSAP : CollisionSystem
     {
         private List<IBroadphaseEntity> bodyList = new List<IBroadphaseEntity>();
         private List<IBroadphaseEntity> active = new List<IBroadphaseEntity>();
@@ -156,7 +156,7 @@ namespace TrueSync.Physics3D {
         /// which start at rayOrigin and end in rayOrigin + rayDirection.
         /// </summary>
         #region public override bool Raycast(JVector rayOrigin, JVector rayDirection, out JVector normal,out FP fraction)
-        public override bool Raycast(TSVector rayOrigin, TSVector rayDirection, RaycastCallback raycast, out RigidBody body, out TSVector normal, out FP fraction)
+        public override bool Raycast(ref TSVector rayOrigin, ref TSVector rayDirection, RaycastCallback raycast, out RigidBody body, out TSVector normal, out FP fraction)
         {
             body = null; normal = TSVector.zero; fraction = FP.MaxValue;
 
@@ -171,7 +171,7 @@ namespace TrueSync.Physics3D {
                     SoftBody softBody = e as SoftBody;
                     foreach (RigidBody b in softBody.VertexBodies)
                     {
-                        if (this.Raycast(b, rayOrigin, rayDirection, out tempNormal, out tempFraction))
+                        if (this.Raycast(b, ref rayOrigin, ref rayDirection, out tempNormal, out tempFraction))
                         {
                             if (tempFraction < fraction && (raycast == null || raycast(b, tempNormal, tempFraction)))
                             {
@@ -187,7 +187,7 @@ namespace TrueSync.Physics3D {
                 {
                     RigidBody b = e as RigidBody;
 
-                    if (this.Raycast(b, rayOrigin, rayDirection, out tempNormal, out tempFraction))
+                    if (this.Raycast(b, ref rayOrigin, ref rayDirection, out tempNormal, out tempFraction))
                     {
                         if (tempFraction < fraction && (raycast == null || raycast(b, tempNormal, tempFraction)))
                         {
@@ -211,7 +211,7 @@ namespace TrueSync.Physics3D {
         /// which start at rayOrigin and end in rayOrigin + rayDirection.
         /// </summary>
         #region public override bool Raycast(RigidBody body, JVector rayOrigin, JVector rayDirection, out JVector normal, out FP fraction)
-        public override bool Raycast(RigidBody body, TSVector rayOrigin, TSVector rayDirection, out TSVector normal, out FP fraction)
+        public override bool Raycast(RigidBody body, ref TSVector rayOrigin, ref TSVector rayDirection, out TSVector normal, out FP fraction)
         {
             fraction = FP.MaxValue; normal = TSVector.zero;
 
@@ -278,7 +278,7 @@ namespace TrueSync.Physics3D {
         /// against rays (rays are of infinite length). They are checked against segments
         /// which start at rayOrigin and end in rayOrigin + rayDirection.
         /// </summary>
-        public override bool Raycast(TSVector rayOrigin, TSVector rayDirection, RaycastCallback raycast, int layerMask, out RigidBody body, out TSVector normal, out FP fraction)
+        public override bool Raycast(ref TSVector rayOrigin, ref TSVector rayDirection, RaycastCallback raycast, int layerMask, out RigidBody body, out TSVector normal, out FP fraction)
         {
             body = null; normal = TSVector.zero; fraction = FP.MaxValue;
 
@@ -297,7 +297,7 @@ namespace TrueSync.Physics3D {
                         if ((layerMask & bodyLayerMask) != bodyLayerMask)
                             continue;
 
-                        if (this.Raycast(b, rayOrigin, rayDirection, out tempNormal, out tempFraction))
+                        if (this.Raycast(b, ref rayOrigin, ref rayDirection, out tempNormal, out tempFraction))
                         {
                             if (tempFraction < fraction && (raycast == null || raycast(b, tempNormal, tempFraction)))
                             {
@@ -316,7 +316,8 @@ namespace TrueSync.Physics3D {
                     if ((layerMask & bodyLayerMask) != bodyLayerMask)
                         continue;
 
-                    if (this.Raycast(b, rayOrigin, rayDirection, out tempNormal, out tempFraction))
+                    var bb = b;
+                    if (this.Raycast(b, ref rayOrigin, ref  rayDirection, out tempNormal, out tempFraction))
                     {
                         if (tempFraction < fraction && (raycast == null || raycast(b, tempNormal, tempFraction)))
                         {
@@ -329,7 +330,8 @@ namespace TrueSync.Physics3D {
                 }
             }
 
-            return result;
-        }
+			return result;
+		}
+
     }
 }

@@ -1,7 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
 
 namespace TrueSync {
     /**
@@ -58,10 +57,10 @@ namespace TrueSync {
          **/
         private Dictionary<byte, List<TrueSyncManagedBehaviour>> behaviorsByPlayer;
 
-        /**
+		/**
          * @brief The coroutine scheduler.
          **/
-        private CoroutineScheduler scheduler;
+		public CoroutineScheduler scheduler;
 
         /**
          * @brief List of {@link TrueSyncBehaviour} that should be included next update.
@@ -183,7 +182,7 @@ namespace TrueSync {
             }
         }
 
-        private static TrueSyncManager instance;
+		public static TrueSyncManager instance;
 
         private TrueSyncConfig ActiveConfig {
             get {
@@ -200,7 +199,19 @@ namespace TrueSync {
             }
         }
 
-        void Awake() {
+        void Awake()
+        {
+            _Awake();
+        }
+
+        bool isAwaked = false;
+        public void _Awake() {
+            if (isAwaked)
+            {
+                return;
+            }
+            isAwaked = true;
+
             TrueSyncConfig currentConfig = ActiveConfig;
             lockedTimeStep = currentConfig.lockedTimeStep;
 
@@ -214,7 +225,11 @@ namespace TrueSync {
             }
 
             StateTracker.AddTracking(this, "time");
-        }
+
+			scheduler = new CoroutineScheduler(lockstep);
+			CoroutineManager.SharedScheduler = scheduler;
+
+		}
 
         void Start() {
             instance = this;
@@ -226,7 +241,7 @@ namespace TrueSync {
             //} else {
             //    communicator = new PhotonTrueSyncCommunicator(PhotonNetwork.networkingPeer);
             //}
-            Debug.LogWarning("You are not connected to Photon. TrueSync will start in offline mode.");
+            //Debug.LogWarning("You are not connected to Photon. TrueSync will start in offline mode.");
 
             TrueSyncConfig activeConfig = ActiveConfig;
 
@@ -264,9 +279,10 @@ namespace TrueSync {
                 this.gameObject.AddComponent<TrueSyncStats>().Lockstep = lockstep;
             }
 
-            scheduler = new CoroutineScheduler(lockstep);
-
-            if (ReplayRecord.replayMode != ReplayMode.LOAD_REPLAY) {
+			scheduler.SetLockStep(lockstep);
+            
+			if (ReplayRecord.replayMode != ReplayMode.LOAD_REPLAY)
+			{
                 lockstep.AddPlayer(0, "Local_Player", true);
                 //if (communicator == null) {
                 //    lockstep.AddPlayer(0, "Local_Player", true);
@@ -314,7 +330,7 @@ namespace TrueSync {
                     GameObject prefab = playerPrefabs[index];
 
                     GameObject prefabInst = Instantiate(prefab);
-                    InitializeGameObject(prefabInst, prefabInst.transform.position.ToTSVector(), prefabInst.transform.rotation.ToTSQuaternion());
+					InitializeGameObject(prefabInst, prefabInst.transform.position.ToTSVector(), prefabInst.transform.rotation.ToTSQuaternion(), prefabInst.transform.localScale.ToTSVector());
 
                     TrueSyncBehaviour[] behaviours = prefabInst.GetComponentsInChildren<TrueSyncBehaviour>();
                     for (int index2 = 0, length2 = behaviours.Length; index2 < length2; index2++) {
@@ -438,7 +454,7 @@ namespace TrueSync {
          **/
         public static void UpdateCoroutines() {
             if (instance != null && instance.lockstep != null) {
-                instance.scheduler.UpdateAllCoroutines();
+				instance.scheduler.UpdateAllCoroutines();
             }
         }
 
@@ -459,19 +475,20 @@ namespace TrueSync {
          * @param prefab GameObject's prefab to instantiate.
          **/
         public static GameObject SyncedInstantiate(GameObject prefab) {
-            return SyncedInstantiate(prefab, prefab.transform.position.ToTSVector(), prefab.transform.rotation.ToTSQuaternion());
+			return SyncedInstantiate(prefab, prefab.transform.position.ToTSVector(), prefab.transform.rotation.ToTSQuaternion(), prefab.transform.localScale.ToTSVector());
         }
 
-        /**
+		/**
          * @brief Instantiates a new prefab in a deterministic way.
          * 
          * @param prefab GameObject's prefab to instantiate.
          * @param position Position to place the new GameObject.
          * @param rotation Rotation to set in the new GameObject.
          **/
-        public static GameObject SyncedInstantiate(GameObject prefab, TSVector position, TSQuaternion rotation) {
+		public static GameObject SyncedInstantiate(GameObject prefab, TSVector position, TSQuaternion rotation, TSVector localScale)
+		{
             if (instance != null && instance.lockstep != null) {
-                GameObject go = GameObject.Instantiate(prefab, position.ToVector(), rotation.ToQuaternion()) as GameObject;
+				GameObject go = GameObject.Instantiate(prefab, position.ToVector(), rotation.ToQuaternion()) as GameObject;
 
                 if (ReplayRecord.replayMode != ReplayMode.LOAD_REPLAY) {
                     AddGameObjectOnSafeMap(go);
@@ -486,7 +503,7 @@ namespace TrueSync {
                     }
                 }
 
-                InitializeGameObject(go, position, rotation);
+				InitializeGameObject(go, position, rotation, localScale);
 
                 return go;
             }
@@ -530,7 +547,8 @@ namespace TrueSync {
             safeMap.Remove(TrueSyncManager.LastSafeTick);
         }
 
-        private static void InitializeGameObject(GameObject go, TSVector position, TSQuaternion rotation) {
+		private static void InitializeGameObject(GameObject go, TSVector position, TSQuaternion rotation, TSVector localScale)
+		{
             ICollider[] tsColliders = go.GetComponentsInChildren<ICollider>();
             if (tsColliders != null) {
                 for (int index = 0, length = tsColliders.Length; index < length; index++) {
@@ -538,12 +556,14 @@ namespace TrueSync {
                 }
             }
 
-            TSTransform rootTSTransform = go.GetComponent<TSTransform>();
+			// TSTransform rootTSTransform = go.GetComponent<TSTransform>();
+			TSTransform rootTSTransform = go.ReGetTransform();
             if (rootTSTransform != null) {
                 rootTSTransform.Initialize();
 
                 rootTSTransform.position = position;
                 rootTSTransform.rotation = rotation;
+				rootTSTransform.localScale = localScale;
             }
 
             TSTransform[] tsTransforms = go.GetComponentsInChildren<TSTransform>();
@@ -577,15 +597,16 @@ namespace TrueSync {
             }
         }
 
-        /**
+		/**
          * @brief Instantiates a new prefab in a deterministic way.
          * 
          * @param prefab GameObject's prefab to instantiate.
          * @param position Position to place the new GameObject.
          * @param rotation Rotation to set in the new GameObject.
          **/
-        public static GameObject SyncedInstantiate(GameObject prefab, TSVector2 position, TSQuaternion rotation) {
-            return SyncedInstantiate(prefab, new TSVector(position.x, position.y, 0), rotation);
+		public static GameObject SyncedInstantiate(GameObject prefab, TSVector2 position, TSQuaternion rotation, TSVector localScale)
+		{
+			return SyncedInstantiate(prefab, new TSVector(position.x, position.y, 0), rotation, localScale);
         }
 
         /**
@@ -711,7 +732,10 @@ namespace TrueSync {
                 if (tsDeltaTime >= (lockedTimeStep - JitterTimeFactor)) {
                     tsDeltaTime = 0;
 
-                    instance.scheduler.UpdateAllCoroutines();
+					if (TSPhysics.autoSimulation)
+					{
+						instance.scheduler.UpdateAllCoroutines();
+					}
                     lockstep.Update();
                 }
             }
@@ -752,7 +776,7 @@ namespace TrueSync {
 
                 if (bh != null && !bh.disabled) {
                     bh.OnPreSyncedUpdate();
-                    instance.scheduler.UpdateAllCoroutines();
+					instance.scheduler.UpdateAllCoroutines();
                 }
             }
 
@@ -766,7 +790,7 @@ namespace TrueSync {
 
                         if (bh != null && !bh.disabled) {
                             bh.OnPreSyncedUpdate();
-                            instance.scheduler.UpdateAllCoroutines();
+							instance.scheduler.UpdateAllCoroutines();
                         }
                     }
                 }
@@ -780,7 +804,7 @@ namespace TrueSync {
 
                 if (bh != null && !bh.disabled) {
                     bh.OnSyncedUpdate();
-                    instance.scheduler.UpdateAllCoroutines();
+					instance.scheduler.UpdateAllCoroutines();
                 }
             }
 
@@ -796,7 +820,7 @@ namespace TrueSync {
 
                         if (bh != null && !bh.disabled) {
                             bh.OnSyncedUpdate();
-                            instance.scheduler.UpdateAllCoroutines();
+							instance.scheduler.UpdateAllCoroutines();
                         }
                     }
                 }
@@ -854,24 +878,24 @@ namespace TrueSync {
 
         void OnGameStarted() {
             TrueSyncManagedBehaviour.OnGameStarted(generalBehaviours, behaviorsByPlayer);
-            instance.scheduler.UpdateAllCoroutines();
+            //instance.scheduler.UpdateAllCoroutines();
 
             CheckQueuedBehaviours();
         }
 
         void OnGamePaused() {
             TrueSyncManagedBehaviour.OnGamePaused(generalBehaviours, behaviorsByPlayer);
-            instance.scheduler.UpdateAllCoroutines();
+			instance.scheduler.UpdateAllCoroutines();
         }
 
         void OnGameUnPaused() {
             TrueSyncManagedBehaviour.OnGameUnPaused(generalBehaviours, behaviorsByPlayer);
-            instance.scheduler.UpdateAllCoroutines();
+			instance.scheduler.UpdateAllCoroutines();
         }
 
         void OnGameEnded() {
             TrueSyncManagedBehaviour.OnGameEnded(generalBehaviours, behaviorsByPlayer);
-            instance.scheduler.UpdateAllCoroutines();
+			instance.scheduler.UpdateAllCoroutines();
         }
 
         void OnApplicationQuit() {

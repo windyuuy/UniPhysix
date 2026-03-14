@@ -65,7 +65,7 @@ namespace TrueSync.Physics2D
             Body newBody = CreateBody(world, position);
             newBody.UserData = userData;
 
-            Vertices rectangleVertices = PolygonTools.CreateRectangle(width / 2, height / 2);
+			Vertices rectangleVertices = PolygonTools.CreateRectangle(width * FP.myhalf, height * FP.myhalf);
             PolygonShape rectangleShape = new PolygonShape(rectangleVertices, density);
             newBody.CreateFixture(rectangleShape);
 
@@ -168,8 +168,8 @@ namespace TrueSync.Physics2D
         public static Body CreateCapsule(World world, FP height, FP endRadius, FP density,
                                          object userData = null)
         {
-            //Create the middle rectangle
-            Vertices rectangle = PolygonTools.CreateRectangle(endRadius, height / 2);
+			//Create the middle rectangle
+			Vertices rectangle = PolygonTools.CreateRectangle(endRadius, height * FP.myhalf);
 
             List<Vertices> list = new List<Vertices>();
             list.Add(rectangle);
@@ -179,11 +179,11 @@ namespace TrueSync.Physics2D
 
             //Create the two circles
             CircleShape topCircle = new CircleShape(endRadius, density);
-            topCircle.Position = new TSVector2(0, height / 2);
+			topCircle.Position = new TSVector2(0, height * FP.myhalf);
             body.CreateFixture(topCircle);
 
             CircleShape bottomCircle = new CircleShape(endRadius, density);
-            bottomCircle.Position = new TSVector2(0, -(height / 2));
+			bottomCircle.Position = new TSVector2(0, -(height * FP.myhalf));
             body.CreateFixture(bottomCircle);
             return body;
         }

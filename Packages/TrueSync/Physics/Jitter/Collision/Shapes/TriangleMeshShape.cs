@@ -21,205 +21,289 @@
 using System;
 using System.Collections.Generic;
 #endregion
+using System.Linq;
 
-namespace TrueSync.Physics3D {
+#if UNITY_5_5_OR_NEWER
+using UnityEngine.Profiling;
+#endif
 
-    /// <summary>
-    /// A <see cref="Shape"/> representing a triangleMesh.
-    /// </summary>
-    public class TriangleMeshShape : Multishape
-    {
-        private List<int> potentialTriangles = new List<int>();
-        private Octree octree = null;
+namespace TrueSync.Physics3D
+{
 
-        private FP sphericalExpansion = FP.EN2;
+	public class TriangleMeshInfo
+	{
+		public TriangleMeshInfo(List<TSVector> vertices, List<TriangleVertexIndices> indices)
+		{
+			this.vertices = vertices;
+			this.indices = indices;
+		}
+		public List<TSVector> vertices;
 
-        /// <summary>
-        /// Expands the triangles by the specified amount.
-        /// This stabilizes collision detection for flat shapes.
-        /// </summary>
-        public FP SphericalExpansion 
-        { 
-            get { return sphericalExpansion; } 
-            set { sphericalExpansion = value; } 
-        }
+		public List<TriangleVertexIndices> indices;
 
-        /// <summary>
-        /// Creates a new istance if the TriangleMeshShape class.
-        /// </summary>
-        /// <param name="octree">The octree which holds the triangles
-        /// of a mesh.</param>
-        public TriangleMeshShape(Octree octree)
-        {
-            this.octree = octree;
-            UpdateShape();
-        }
+		public List<TSVector> GetVertices(TSVector lossyScale)
+		{
+			var result = vertices.Select(p => new TSVector(p.x * lossyScale.x, p.y * lossyScale.y, p.z * lossyScale.z)).ToList();
+			return result;
+		}
 
-        internal TriangleMeshShape() { }
+	}
 
- 
-        protected override Multishape CreateWorkingClone()
-        {
-            TriangleMeshShape clone = new TriangleMeshShape(this.octree);
-            clone.sphericalExpansion = this.sphericalExpansion;
-            return clone;
-        }
+	/// <summary>
+	/// A <see cref="Shape"/> representing a triangleMesh.
+	/// </summary>
+	public class TriangleMeshShape : Multishape
+	{
+		private List<int> potentialTriangles = new List<int>();
+		private Octree octree = null;
+
+		private FP sphericalExpansion = FP.EN2;
+
+		/// <summary>
+		/// Expands the triangles by the specified amount.
+		/// This stabilizes collision detection for flat shapes.
+		/// </summary>
+		public FP SphericalExpansion
+		{
+			get { return sphericalExpansion; }
+			set { sphericalExpansion = value; }
+		}
+
+		protected TriangleMeshInfo meshInfo;
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="meshInfo"></param>
+		/// <param name="needUpdate">避开不必要的重复初始化</param>
+		public void SetMeshInfo(TriangleMeshInfo meshInfo, bool needUpdate)
+		{
+			this.meshInfo = meshInfo;
+
+			if (needUpdate)
+			{
+				this.updateMesh();
+			}
+		}
+
+		protected override void setScale(TSVector value)
+		{
+			if (this.scale != value || this.octree==null)
+			{
+				this.scale = value;
+				// _shapeScale.MergeFrom(ref value);
+				_shapeScale = value;
+				updateMesh();
+			}
+		}
+
+		protected void updateMesh()
+		{
+			var octree = new Octree(meshInfo.GetVertices(this.GetShapeScale()), meshInfo.indices);
+			this.SetOctree(octree);
+		}
+
+		/// <summary>
+		/// Creates a new istance if the TriangleMeshShape class.
+		/// </summary>
+		/// <param name="octree">The octree which holds the triangles
+		/// of a mesh.</param>
+		public void SetOctree(Octree octree)
+		{
+			this.octree = octree;
+			UpdateShape();
+		}
+
+		internal TriangleMeshShape(TriangleMeshInfo meshInfo, Octree octree) : base()
+		{
+			this.meshInfo = meshInfo;
+			this.SetOctree(octree);
+		}
+		internal TriangleMeshShape() { }
 
 
-        /// <summary>
-        /// Passes a axis aligned bounding box to the shape where collision
-        /// could occour.
-        /// </summary>
-        /// <param name="box">The bounding box where collision could occur.</param>
-        /// <returns>The upper index with which <see cref="SetCurrentShape"/> can be 
-        /// called.</returns>
-        public override int Prepare(ref TSBBox box)
-        {
-            potentialTriangles.Clear();
+		protected override Multishape CreateWorkingClone()
+		{
+			TriangleMeshShape clone = new TriangleMeshShape(this.meshInfo, this.octree);
+			clone.sphericalExpansion = this.sphericalExpansion;
+			return clone;
+		}
 
-            #region Expand Spherical
-            TSBBox exp = box;
 
-            exp.min.x -= sphericalExpansion;
-            exp.min.y -= sphericalExpansion;
-            exp.min.z -= sphericalExpansion;
-            exp.max.x += sphericalExpansion;
-            exp.max.y += sphericalExpansion;
-            exp.max.z += sphericalExpansion;
-            #endregion
+		/// <summary>
+		/// Passes a axis aligned bounding box to the shape where collision
+		/// could occour.
+		/// </summary>
+		/// <param name="box">The bounding box where collision could occur.</param>
+		/// <returns>The upper index with which <see cref="SetCurrentShape"/> can be 
+		/// called.</returns>
+		public override int Prepare(ref TSBBox box)
+		{
+			if (octree == null)
+			{
+				UnityEngine.Debug.LogError("invalid TriangleMeshShape to roughly detect whitch not inited");
+				return 0;
+			}
 
-            octree.GetTrianglesIntersectingtAABox(potentialTriangles, ref exp);
+			potentialTriangles.Clear();
 
-            return potentialTriangles.Count;
-        }
+			#region Expand Spherical
+			TSBBox exp = box;
 
-        public override void MakeHull(ref List<TSVector> triangleList, int generationThreshold)
-        {
-            TSBBox large = TSBBox.LargeBox;
+			exp.min.x -= sphericalExpansion;
+			exp.min.y -= sphericalExpansion;
+			exp.min.z -= sphericalExpansion;
+			exp.max.x += sphericalExpansion;
+			exp.max.y += sphericalExpansion;
+			exp.max.z += sphericalExpansion;
+			#endregion
 
-            List<int> indices = new List<int>();
-            octree.GetTrianglesIntersectingtAABox(indices, ref large);
+			octree.GetTrianglesIntersectingtAABox(potentialTriangles, ref exp);
 
-            for (int i = 0; i < indices.Count; i++)
-            {
-                triangleList.Add(octree.GetVertex(octree.GetTriangleVertexIndex(i).I0));
-                triangleList.Add(octree.GetVertex(octree.GetTriangleVertexIndex(i).I1));
-                triangleList.Add(octree.GetVertex(octree.GetTriangleVertexIndex(i).I2));
-            }
+			return potentialTriangles.Count;
+		}
 
-        }
+		protected override void MakeHull(ref List<TSVector> triangleList, int generationThreshold)
+		{
+			TSBBox large = TSBBox.LargeBox;
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="rayOrigin"></param>
-        /// <param name="rayDelta"></param>
-        /// <returns></returns>
-        public override int Prepare(ref TSVector rayOrigin, ref TSVector rayDelta)
-        {
-            potentialTriangles.Clear();
+			List<int> indices = new List<int>();
+			octree.GetTrianglesIntersectingtAABox(indices, ref large);
 
-            #region Expand Spherical
-            TSVector expDelta;
-            TSVector.Normalize(ref rayDelta, out expDelta);
-            expDelta = rayDelta + expDelta * sphericalExpansion;
-            #endregion
+			for (int i = 0; i < indices.Count; i++)
+			{
+				triangleList.Add(octree.GetVertex(octree.GetTriangleVertexIndex(i).I0));
+				triangleList.Add(octree.GetVertex(octree.GetTriangleVertexIndex(i).I1));
+				triangleList.Add(octree.GetVertex(octree.GetTriangleVertexIndex(i).I2));
+			}
 
-            octree.GetTrianglesIntersectingRay(potentialTriangles, rayOrigin, expDelta);
+		}
 
-            return potentialTriangles.Count;
-        }
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="rayOrigin"></param>
+		/// <param name="rayDelta"></param>
+		/// <returns></returns>
+		public override int Prepare(ref TSVector rayOrigin, ref TSVector rayDelta)
+		{
+			potentialTriangles.Clear();
 
-        TSVector[] vecs = new TSVector[3];
+			#region Expand Spherical
+			TSVector expDelta;
+			TSVector.Normalize(ref rayDelta, out expDelta);
+			expDelta = rayDelta + expDelta * sphericalExpansion;
+			#endregion
 
-        /// <summary>
-        /// SupportMapping. Finds the point in the shape furthest away from the given direction.
-        /// Imagine a plane with a normal in the search direction. Now move the plane along the normal
-        /// until the plane does not intersect the shape. The last intersection point is the result.
-        /// </summary>
-        /// <param name="direction">The direction.</param>
-        /// <param name="result">The result.</param>
-        public override void SupportMapping(ref TSVector direction, out TSVector result)
-        {
-            TSVector exp;
-            TSVector.Normalize(ref direction, out exp);
-            exp *= sphericalExpansion;
+			octree.GetTrianglesIntersectingRay(potentialTriangles, rayOrigin, expDelta);
 
-            FP min = TSVector.Dot(ref vecs[0], ref direction);
-            int minIndex = 0;
-            FP dot = TSVector.Dot(ref vecs[1], ref direction);
-            if (dot > min)
-            {
-                min = dot;
-                minIndex = 1;
-            }
-            dot = TSVector.Dot(ref vecs[2], ref direction);
-            if (dot > min)
-            {
-                min = dot;
-                minIndex = 2;
-            }
+			return potentialTriangles.Count;
+		}
 
-            result = vecs[minIndex] + exp;
-        }
+		TSVector[] vecs = new TSVector[3];
 
-        /// <summary>
-        /// Gets the axis aligned bounding box of the orientated shape. This includes
-        /// the whole shape.
-        /// </summary>
-        /// <param name="orientation">The orientation of the shape.</param>
-        /// <param name="box">The axis aligned bounding box of the shape.</param>
-        public override void GetBoundingBox(ref TSMatrix orientation, out TSBBox box)
-        {
-            box = octree.rootNodeBox;
+		public TSVector[] GetTrianglePoints()
+		{
+			return vecs;
+		}
 
-            #region Expand Spherical
-            box.min.x -= sphericalExpansion;
-            box.min.y -= sphericalExpansion;
-            box.min.z -= sphericalExpansion;
-            box.max.x += sphericalExpansion;
-            box.max.y += sphericalExpansion;
-            box.max.z += sphericalExpansion;
-            #endregion
+		/// <summary>
+		/// SupportMapping. Finds the point in the shape furthest away from the given direction.
+		/// Imagine a plane with a normal in the search direction. Now move the plane along the normal
+		/// until the plane does not intersect the shape. The last intersection point is the result.
+		/// </summary>
+		/// <param name="direction">The direction.</param>
+		/// <param name="result">The result.</param>
+		public override void SupportMapping(ref TSVector direction, out TSVector result)
+		{
+			TSVector exp;
+			//Profiler.BeginSample("Normalize");
+			TSVector.Normalize(ref direction, out exp);
+			//Profiler.EndSample();
+			exp *= sphericalExpansion;
 
-            box.Transform(ref orientation);
-        }
+			FP min = TSVector.Dot(ref vecs[0], ref direction);
+			int minIndex = 0;
+			FP dot = TSVector.Dot(ref vecs[1], ref direction);
+			if (dot > min)
+			{
+				min = dot;
+				minIndex = 1;
+			}
+			dot = TSVector.Dot(ref vecs[2], ref direction);
+			if (dot > min)
+			{
+				min = dot;
+				minIndex = 2;
+			}
 
-        private bool flipNormal = false;
-        public bool FlipNormals { get { return flipNormal; } set { flipNormal = value; } }
+			// result = vecs[minIndex] + exp;
+			TSVector.Add(ref vecs[minIndex], ref exp, out result);
+		}
 
-        /// <summary>
-        /// Sets the current shape. First <see cref="Prepare"/> has to be called.
-        /// After SetCurrentShape the shape immitates another shape.
-        /// </summary>
-        /// <param name="index"></param>
-        public override void SetCurrentShape(int index)
-        {
-            vecs[0] = octree.GetVertex(octree.tris[potentialTriangles[index]].I0);
-            vecs[1] = octree.GetVertex(octree.tris[potentialTriangles[index]].I1);
-            vecs[2] = octree.GetVertex(octree.tris[potentialTriangles[index]].I2);
+		/// <summary>
+		/// Gets the axis aligned bounding box of the orientated shape. This includes
+		/// the whole shape.
+		/// </summary>
+		/// <param name="orientation">The orientation of the shape.</param>
+		/// <param name="box">The axis aligned bounding box of the shape.</param>
+		public override void GetBoundingBox(ref TSMatrix orientation, out TSBBox box)
+		{
+			if (octree != null)
+			{
+				box = octree.rootNodeBox;
+			}
+			else
+			{
+				box = new TSBBox();
+			}
 
-            TSVector sum = vecs[0];
-            TSVector.Add(ref sum, ref vecs[1], out sum);
-            TSVector.Add(ref sum, ref vecs[2], out sum);
-            TSVector.Multiply(ref sum, FP.One / (3 * FP.One), out sum);
+			#region Expand Spherical
+			box.min.x -= sphericalExpansion;
+			box.min.y -= sphericalExpansion;
+			box.min.z -= sphericalExpansion;
+			box.max.x += sphericalExpansion;
+			box.max.y += sphericalExpansion;
+			box.max.z += sphericalExpansion;
+			#endregion
 
-      
-            geomCen = sum;
+			box.Transform(ref orientation);
+		}
 
-            TSVector.Subtract(ref vecs[1], ref vecs[0], out sum);
-            TSVector.Subtract(ref vecs[2], ref vecs[0], out normal);
-            TSVector.Cross(ref sum, ref normal, out normal);
-            normal.Normalize();
-            if (flipNormal) normal.Negate();
-        }
+		private bool flipNormal = false;
+		public bool FlipNormals { get { return flipNormal; } set { flipNormal = value; } }
 
-        private TSVector normal = TSVector.up;
+		/// <summary>
+		/// Sets the current shape. First <see cref="Prepare"/> has to be called.
+		/// After SetCurrentShape the shape immitates another shape.
+		/// </summary>
+		/// <param name="index"></param>
+		public override void SetCurrentShape(int index)
+		{
+			vecs[0] = octree.GetVertex(octree.tris[potentialTriangles[index]].I0);
+			vecs[1] = octree.GetVertex(octree.tris[potentialTriangles[index]].I1);
+			vecs[2] = octree.GetVertex(octree.tris[potentialTriangles[index]].I2);
 
-        public void CollisionNormal(out TSVector normal)
-        {
-            normal = this.normal;
-        }
-    }
+			TSVector sum = vecs[0];
+			TSVector.Add(ref sum, ref vecs[1], out sum);
+			TSVector.Add(ref sum, ref vecs[2], out sum);
+			TSVector.Multiply(ref sum, FP.One / (3 * FP.One), out sum);
+
+
+			geomCen = sum;
+
+			TSVector.Subtract(ref vecs[1], ref vecs[0], out sum);
+			TSVector.Subtract(ref vecs[2], ref vecs[0], out normal);
+			TSVector.Cross(ref sum, ref normal, out normal);
+			normal.Normalize();
+			if (flipNormal) normal.Negate();
+		}
+
+		private TSVector normal = TSVector.up;
+
+		public void CollisionNormal(out TSVector normal)
+		{
+			normal = this.normal;
+		}
+	}
 
 }

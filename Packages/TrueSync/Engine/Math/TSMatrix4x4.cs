@@ -161,17 +161,17 @@ namespace TrueSync
         public static TSMatrix4x4 Multiply(TSMatrix4x4 matrix1, TSMatrix4x4 matrix2)
         {
             TSMatrix4x4 result;
-            TSMatrix4x4.Multiply(ref matrix1, ref matrix2, out result);
+			TSMatrix4x4.Multiply_2(ref matrix1, ref matrix2, out result);
             return result;
         }
 
-        /// <summary>
-        /// Multiply two matrices. Notice: matrix multiplication is not commutative.
-        /// </summary>
-        /// <param name="matrix1">The first matrix.</param>
-        /// <param name="matrix2">The second matrix.</param>
-        /// <param name="result">The product of both matrices.</param>
-        public static void Multiply(ref TSMatrix4x4 matrix1, ref TSMatrix4x4 matrix2, out TSMatrix4x4 result)
+		/// <summary>
+		/// Multiply two matrices. Notice: matrix multiplication is not commutative.
+		/// </summary>
+		/// <param name="matrix1">The first matrix.</param>
+		/// <param name="matrix2">The second matrix.</param>
+		/// <param name="result">The product of both matrices.</param>
+		private static void Multiply_2(ref TSMatrix4x4 matrix1, ref TSMatrix4x4 matrix2, out TSMatrix4x4 result)
         {
             // First row
             result.M11 = matrix1.M11 * matrix2.M11 + matrix1.M12 * matrix2.M21 + matrix1.M13 * matrix2.M31 + matrix1.M14 * matrix2.M41;
@@ -198,13 +198,63 @@ namespace TrueSync
             result.M44 = matrix1.M41 * matrix2.M14 + matrix1.M42 * matrix2.M24 + matrix1.M43 * matrix2.M34 + matrix1.M44 * matrix2.M44;
         }
 
-        /// <summary>
-        /// Matrices are added.
-        /// </summary>
-        /// <param name="matrix1">The first matrix.</param>
-        /// <param name="matrix2">The second matrix.</param>
-        /// <returns>The sum of both matrices.</returns>
-        public static TSMatrix4x4 Add(TSMatrix4x4 matrix1, TSMatrix4x4 matrix2)
+		/// <summary>
+		/// Multiply two matrices. Notice: matrix multiplication is not commutative.
+		/// </summary>
+		/// <param name="matrix1">The first matrix.</param>
+		/// <param name="matrix2">The second matrix.</param>
+		/// <param name="result">The product of both matrices.</param>
+		public static void Multiply(ref TSMatrix4x4 matrix1, ref TSMatrix4x4 matrix2, out TSMatrix4x4 result)
+		{
+			// First row
+			var m11 = matrix1.M11 * matrix2.M11 + matrix1.M12 * matrix2.M21 + matrix1.M13 * matrix2.M31 + matrix1.M14 * matrix2.M41;
+			var m12 = matrix1.M11 * matrix2.M12 + matrix1.M12 * matrix2.M22 + matrix1.M13 * matrix2.M32 + matrix1.M14 * matrix2.M42;
+			var m13 = matrix1.M11 * matrix2.M13 + matrix1.M12 * matrix2.M23 + matrix1.M13 * matrix2.M33 + matrix1.M14 * matrix2.M43;
+			var m14 = matrix1.M11 * matrix2.M14 + matrix1.M12 * matrix2.M24 + matrix1.M13 * matrix2.M34 + matrix1.M14 * matrix2.M44;
+
+			// Second row
+			var m21 = matrix1.M21 * matrix2.M11 + matrix1.M22 * matrix2.M21 + matrix1.M23 * matrix2.M31 + matrix1.M24 * matrix2.M41;
+			var m22 = matrix1.M21 * matrix2.M12 + matrix1.M22 * matrix2.M22 + matrix1.M23 * matrix2.M32 + matrix1.M24 * matrix2.M42;
+			var m23 = matrix1.M21 * matrix2.M13 + matrix1.M22 * matrix2.M23 + matrix1.M23 * matrix2.M33 + matrix1.M24 * matrix2.M43;
+			var m24 = matrix1.M21 * matrix2.M14 + matrix1.M22 * matrix2.M24 + matrix1.M23 * matrix2.M34 + matrix1.M24 * matrix2.M44;
+
+			// Third row
+			var m31 = matrix1.M31 * matrix2.M11 + matrix1.M32 * matrix2.M21 + matrix1.M33 * matrix2.M31 + matrix1.M34 * matrix2.M41;
+			var m32 = matrix1.M31 * matrix2.M12 + matrix1.M32 * matrix2.M22 + matrix1.M33 * matrix2.M32 + matrix1.M34 * matrix2.M42;
+			var m33 = matrix1.M31 * matrix2.M13 + matrix1.M32 * matrix2.M23 + matrix1.M33 * matrix2.M33 + matrix1.M34 * matrix2.M43;
+			var m34 = matrix1.M31 * matrix2.M14 + matrix1.M32 * matrix2.M24 + matrix1.M33 * matrix2.M34 + matrix1.M34 * matrix2.M44;
+
+			// Fourth row
+			var m41 = matrix1.M41 * matrix2.M11 + matrix1.M42 * matrix2.M21 + matrix1.M43 * matrix2.M31 + matrix1.M44 * matrix2.M41;
+			var m42 = matrix1.M41 * matrix2.M12 + matrix1.M42 * matrix2.M22 + matrix1.M43 * matrix2.M32 + matrix1.M44 * matrix2.M42;
+			var m43 = matrix1.M41 * matrix2.M13 + matrix1.M42 * matrix2.M23 + matrix1.M43 * matrix2.M33 + matrix1.M44 * matrix2.M43;
+			var m44 = matrix1.M41 * matrix2.M14 + matrix1.M42 * matrix2.M24 + matrix1.M43 * matrix2.M34 + matrix1.M44 * matrix2.M44;
+
+			result.M11 = m11;
+			result.M12 = m12;
+			result.M13 = m13;
+			result.M14 = m14;
+			result.M21 = m21;
+			result.M22 = m22;
+			result.M23 = m23;
+			result.M24 = m24;
+			result.M31 = m31;
+			result.M32 = m32;
+			result.M33 = m33;
+			result.M34 = m34;
+			result.M41 = m41;
+			result.M42 = m42;
+			result.M43 = m43;
+			result.M44 = m44;
+		}
+
+		/// <summary>
+		/// Matrices are added.
+		/// </summary>
+		/// <param name="matrix1">The first matrix.</param>
+		/// <param name="matrix2">The second matrix.</param>
+		/// <returns>The sum of both matrices.</returns>
+		public static TSMatrix4x4 Add(TSMatrix4x4 matrix1, TSMatrix4x4 matrix2)
         {
             TSMatrix4x4 result;
             TSMatrix4x4.Add(ref matrix1, ref matrix2, out result);
@@ -1194,13 +1244,18 @@ namespace TrueSync
             return result;
         }
 
-        public static TSMatrix4x4 TransformToMatrix(ref TSTransform transform)
-        {
-            TSMatrix4x4 result;
-            TRS(transform.localPosition, transform.localRotation, transform.localScale, out result);
-            return result;
-        }
+		public static void TransformToMatrix(ref TSTransform transform, out TSMatrix4x4 result)
+		{
+			TRS(transform.localPosition, transform.localRotation, transform.localScale, out result);
+		}
 
-    }
+		public static TSMatrix4x4 TransformToMatrix(ref TSTransform transform)
+		{
+			TSMatrix4x4 result;
+			TRS(transform.localPosition, transform.localRotation, transform.localScale, out result);
+			return result;
+		}
+
+	}
 
 }
